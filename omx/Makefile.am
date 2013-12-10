@@ -52,12 +52,14 @@ endif
 
 libgstomx_la_CFLAGS = \
 	-DGST_USE_UNSTABLE_API=1 \
+	$(OMXCORE_CFLAGS) \
 	$(OMX_INCLUDEPATH) \
 	$(GST_EGL_CFLAGS) \
 	$(GST_PLUGINS_BASE_CFLAGS) \
 	$(GST_BASE_CFLAGS) \
 	$(GST_CFLAGS)
 libgstomx_la_LIBADD = \
+	$(OMXCORE_LIBS) \
 	$(GST_EGL_LIBS) \
 	$(GST_PLUGINS_BASE_LIBS) \
 	-lgstaudio-@GST_API_VERSION@ \
