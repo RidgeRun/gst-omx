@@ -2351,6 +2351,8 @@ static const struct TypeOffest base_types[] = {
   {gst_omx_video_dec_get_type, G_STRUCT_OFFSET (GstOMXVideoDecClass, cdata)},
   {gst_omx_video_enc_get_type, G_STRUCT_OFFSET (GstOMXVideoEncClass, cdata)},
   {gst_omx_audio_enc_get_type, G_STRUCT_OFFSET (GstOMXAudioEncClass, cdata)},
+  {gst_omx_video_filter_get_type, G_STRUCT_OFFSET (GstOMXVideoFilterClass,
+          cdata)},
 };
 
 static GKeyFile *config = NULL;

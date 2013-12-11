@@ -28,7 +28,8 @@ libgstomx_la_SOURCES = \
 	gstomxh263enc.c \
 	gstomxaacenc.c \
 	gstomxbufferalloc.c \
-	gstomxbufferpool.c
+	gstomxbufferpool.c \
+	gstomxvideofilter.c
 
 noinst_HEADERS = \
 	gstomx.h \
@@ -48,7 +49,8 @@ noinst_HEADERS = \
 	gstomxh263enc.h \
 	gstomxaacenc.h \
 	gstomxbufferalloc.h \
-	gstomxbufferpool.h
+	gstomxbufferpool.h \
+	gstomxvideofilter.h
 
 if !HAVE_EXTERNAL_OMX
 OMX_INCLUDEPATH = -I$(abs_srcdir)/openmax
