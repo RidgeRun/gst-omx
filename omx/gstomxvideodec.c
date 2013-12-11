@@ -50,10 +50,11 @@
 #include <string.h>
 
 #include "gstomxvideodec.h"
-
+#include "gstomxbufferpool.h"
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_dec_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_dec_debug_category
 
+#if 0
 typedef struct _GstOMXMemory GstOMXMemory;
 typedef struct _GstOMXMemoryAllocator GstOMXMemoryAllocator;
 typedef struct _GstOMXMemoryAllocatorClass GstOMXMemoryAllocatorClass;
@@ -645,7 +646,7 @@ gst_omx_buffer_pool_new (GstElement * element, GstOMXComponent * component,
 
   return GST_BUFFER_POOL (pool);
 }
-
+#endif
 typedef struct _BufferIdentification BufferIdentification;
 struct _BufferIdentification
 {
