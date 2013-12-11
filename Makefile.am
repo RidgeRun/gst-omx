@@ -1,4 +1,4 @@
-SUBDIRS = common omx tools config tests
+SUBDIRS = common omx gst tools config tests
 
 # if BUILD_EXAMPLES
 # SUBDIRS += examples
