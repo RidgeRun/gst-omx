@@ -67,6 +67,9 @@ struct _GstOMXVideoEnc
   /* TRUE if EOS buffers shouldn't be forwarded */
   gboolean draining;
 
+  /* TRUE if we are using upstream input buffers */
+  gboolean sharing;
+
   /* TRUE if upstream is EOS */
   gboolean eos;
 
@@ -76,6 +79,8 @@ struct _GstOMXVideoEnc
   guint32 quant_i_frames;
   guint32 quant_p_frames;
   guint32 quant_b_frames;
+  gboolean always_copy;
+
 
   GstFlowReturn downstream_flow_ret;
 };
