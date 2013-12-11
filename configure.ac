@@ -373,6 +373,10 @@ config/rpi/Makefile
 config/ti/Makefile
 examples/Makefile
 examples/egl/Makefile
+tests/Makefile
+tests/check/Makefile
+tests/examples/Makefile
+tests/examples/encode/Makefile
 )
 
 AC_OUTPUT
