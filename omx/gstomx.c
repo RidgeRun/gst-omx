@@ -47,6 +47,7 @@
 #include "gstomxh264enc.h"
 #include "gstomxh263enc.h"
 #include "gstomxaacenc.h"
+#include "gstomxbufferalloc.h"
 
 GST_DEBUG_CATEGORY (gstomx_debug);
 #define GST_CAT_DEFAULT gstomx_debug
@@ -2848,6 +2849,9 @@ plugin_init (GstPlugin * plugin)
     ret |= gst_element_register (plugin, elements[i], rank, subtype);
   }
   g_strfreev (elements);
+
+  ret |= gst_element_register (plugin, "omxbufferalloc", GST_RANK_NONE,
+      gst_omx_buffer_alloc_get_type ());
 
 done:
   g_free (env_config_dir);

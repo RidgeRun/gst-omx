@@ -27,6 +27,7 @@ libgstomx_la_SOURCES = \
 	gstomxh264enc.c \
 	gstomxh263enc.c \
 	gstomxaacenc.c \
+	gstomxbufferalloc.c \
 	gstomxbufferpool.c
 
 noinst_HEADERS = \
@@ -46,6 +47,7 @@ noinst_HEADERS = \
 	gstomxh264enc.h \
 	gstomxh263enc.h \
 	gstomxaacenc.h \
+	gstomxbufferalloc.h \
 	gstomxbufferpool.h
 
 if !HAVE_EXTERNAL_OMX
