@@ -1191,6 +1191,8 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
   }
 
   port_def.format.video.nFrameWidth = info->width;
+  /* Using default buffer alignment 32bits */
+  port_def.nBufferAlignment = 0;
   if (port_def.nBufferAlignment)
     port_def.format.video.nStride =
         (info->width + port_def.nBufferAlignment - 1) &
@@ -1241,10 +1243,13 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
       return FALSE;
     }
   }
+  /* Set output port framerate that is not updated by the TI component */
+  gst_omx_port_get_port_definition (self->enc_out_port, &port_def);
+  port_def.format.video.xFramerate = (info->fps_n << 16) / (info->fps_d);
 
   GST_DEBUG_OBJECT (self, "Updating outport port definition");
   if (gst_omx_port_update_port_definition (self->enc_out_port,
-          NULL) != OMX_ErrorNone)
+          &port_def) != OMX_ErrorNone)
     return FALSE;
 
   if (self->target_bitrate != 0xffffffff) {
@@ -1273,12 +1278,40 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
       return FALSE;
     if (gst_omx_port_mark_reconfigured (self->enc_in_port) != OMX_ErrorNone)
       return FALSE;
+
+    /* If the output port is already configured with the new format we can
+     * allocate buffers here already */
+    if (self->enc_out_port->port_def.format.video.nFrameHeight == info->height
+        && self->enc_out_port->port_def.format.video.nFrameWidth ==
+        info->width) {
+      if (gst_omx_port_set_enabled (self->enc_out_port, TRUE) != OMX_ErrorNone)
+        return FALSE;
+      if (gst_omx_port_allocate_buffers (self->enc_out_port) != OMX_ErrorNone)
+        return FALSE;
+      if (gst_omx_port_wait_enabled (self->enc_out_port,
+              3 * GST_SECOND) != OMX_ErrorNone)
+        return FALSE;
+      if (gst_omx_port_populate (self->enc_out_port) != OMX_ErrorNone)
+        return FALSE;
+      if (gst_omx_port_mark_reconfigured (self->enc_out_port) != OMX_ErrorNone)
+        return FALSE;
+    }
+
   } else {
+    gboolean have_output_buffers = FALSE;
+
     /* Disable output port */
-    if (gst_omx_port_set_enabled (self->enc_out_port, FALSE) != OMX_ErrorNone)
+    if (gst_omx_port_set_enabled (self->enc_out_port, TRUE) != OMX_ErrorNone)
       return FALSE;
 
     if (gst_omx_port_wait_enabled (self->enc_out_port,
+            1 * GST_SECOND) != OMX_ErrorNone)
+      return FALSE;
+
+    if (gst_omx_port_set_enabled (self->enc_in_port, TRUE) != OMX_ErrorNone)
+      return FALSE;
+
+    if (gst_omx_port_wait_enabled (self->enc_in_port,
             1 * GST_SECOND) != OMX_ErrorNone)
       return FALSE;
 
@@ -1288,6 +1321,24 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
     /* Need to allocate buffers to reach Idle state */
     if (gst_omx_port_allocate_buffers (self->enc_in_port) != OMX_ErrorNone)
       return FALSE;
+
+    /* If the output port is already configured with the new format we can
+     * allocate buffers here already */
+    if (self->enc_out_port->port_def.format.video.nFrameHeight == info->height
+        && self->enc_out_port->port_def.format.video.nFrameWidth ==
+        info->width) {
+      if (gst_omx_port_allocate_buffers (self->enc_out_port) != OMX_ErrorNone)
+        return FALSE;
+      have_output_buffers = TRUE;
+    } else {
+      /* And disable output port */
+      if (gst_omx_port_set_enabled (self->enc_out_port, FALSE) != OMX_ErrorNone)
+        return FALSE;
+
+      if (gst_omx_port_wait_enabled (self->enc_out_port,
+              1 * GST_SECOND) != OMX_ErrorNone)
+        return FALSE;
+    }
 
     if (gst_omx_component_get_state (self->enc,
             GST_CLOCK_TIME_NONE) != OMX_StateIdle)
@@ -1300,6 +1351,13 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
     if (gst_omx_component_get_state (self->enc,
             GST_CLOCK_TIME_NONE) != OMX_StateExecuting)
       return FALSE;
+
+    if (have_output_buffers) {
+      if (gst_omx_port_populate (self->enc_out_port) != OMX_ErrorNone)
+        return FALSE;
+      if (gst_omx_port_mark_reconfigured (self->enc_out_port) != OMX_ErrorNone)
+        return FALSE;
+    }
   }
 
   /* Unset flushing to allow ports to accept data again */
@@ -1376,9 +1434,10 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
     goto done;
   }
 
-  /* Same strides and everything */
+  /* Same strides and everything
+   * Subtract 512 bytes padding used by the TI VIDENC component  */
   if (gst_buffer_get_size (inbuf) ==
-      outbuf->omx_buf->nAllocLen - outbuf->omx_buf->nOffset) {
+      outbuf->omx_buf->nAllocLen - outbuf->omx_buf->nOffset - 512) {
     outbuf->omx_buf->nFilledLen = gst_buffer_get_size (inbuf);
 
     gst_buffer_extract (inbuf, 0,

@@ -45,6 +45,15 @@ typedef struct _GstOMXH264EncClass GstOMXH264EncClass;
 struct _GstOMXH264Enc
 {
   GstOMXVideoEnc parent;
+
+  /* caps */
+  guint32 level;
+  guint32 profile;
+
+  /* properties */
+  guint32 i_period;
+  guint32 encoding_preset;
+  guint32 rate_control_preset;
 };
 
 struct _GstOMXH264EncClass
