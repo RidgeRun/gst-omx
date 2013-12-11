@@ -47,6 +47,7 @@
 #include "gstomxh264enc.h"
 #include "gstomxh263enc.h"
 #include "gstomxaacenc.h"
+#include "gstomxscaler.h"
 #include "gstomxbufferalloc.h"
 
 GST_DEBUG_CATEGORY (gstomx_debug);
@@ -2332,9 +2333,10 @@ static const GGetTypeFunction types[] = {
   gst_omx_h264_dec_get_type, gst_omx_h263_dec_get_type,
   gst_omx_wmv_dec_get_type, gst_omx_mpeg4_video_enc_get_type,
   gst_omx_h264_enc_get_type, gst_omx_h263_enc_get_type,
-  gst_omx_aac_enc_get_type, gst_omx_mjpeg_dec_get_type
+  gst_omx_aac_enc_get_type, gst_omx_mjpeg_dec_get_type,
+  gst_omx_scaler_get_type,
 #ifdef HAVE_VP8
-      , gst_omx_vp8_dec_get_type
+  , gst_omx_vp8_dec_get_type
 #endif
 #ifdef HAVE_THEORA
       , gst_omx_theora_dec_get_type
