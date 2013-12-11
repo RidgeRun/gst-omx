@@ -24,6 +24,13 @@
 #include "config.h"
 #endif
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/signal.h>
 #include <gst/gst.h>
 #include <string.h>
 
@@ -43,6 +50,14 @@
 
 GST_DEBUG_CATEGORY (gstomx_debug);
 #define GST_CAT_DEFAULT gstomx_debug
+
+/* Debug Macro */
+#ifdef OMX_DEBUG
+#define  dbg(format, arg...)   g_print (format, ##arg);
+#else
+#define  dbg(format, arg...)
+#endif
+
 
 G_LOCK_DEFINE_STATIC (core_handles);
 static GHashTable *core_handles;
@@ -417,10 +432,9 @@ EventHandler (OMX_HANDLETYPE hComponent, OMX_PTR pAppData, OMX_EVENTTYPE eEvent,
     case OMX_EventCmdComplete:
     {
       OMX_COMMANDTYPE cmd = (OMX_COMMANDTYPE) nData1;
-
-      GST_DEBUG_OBJECT (comp->parent, "%s %s command complete (%d)",
-          comp->name, gst_omx_command_to_string (cmd), cmd);
-
+      dbg ("%s: %s %s command complete (%d)\n",
+          GST_OBJECT_NAME (comp->parent), comp->name,
+          gst_omx_command_to_string (cmd), cmd);
       switch (cmd) {
         case OMX_CommandStateSet:{
           GstOMXMessage *msg = g_slice_new (GstOMXMessage);
@@ -428,10 +442,9 @@ EventHandler (OMX_HANDLETYPE hComponent, OMX_PTR pAppData, OMX_EVENTTYPE eEvent,
           msg->type = GST_OMX_MESSAGE_STATE_SET;
           msg->content.state_set.state = nData2;
 
-          GST_DEBUG_OBJECT (comp->parent, "%s state change to %s finished",
-              comp->name,
+          dbg ("%s: %s state change to %s finished\n",
+              GST_OBJECT_NAME (comp->parent), comp->name,
               gst_omx_state_to_string (msg->content.state_set.state));
-
           gst_omx_component_send_message (comp, msg);
           break;
         }
@@ -440,9 +453,9 @@ EventHandler (OMX_HANDLETYPE hComponent, OMX_PTR pAppData, OMX_EVENTTYPE eEvent,
 
           msg->type = GST_OMX_MESSAGE_FLUSH;
           msg->content.flush.port = nData2;
-          GST_DEBUG_OBJECT (comp->parent, "%s port %u flushed", comp->name,
+          dbg ("%s: %s port %u flushed\n",
+              GST_OBJECT_NAME (comp->parent), comp->name,
               (guint) msg->content.flush.port);
-
           gst_omx_component_send_message (comp, msg);
           break;
         }
@@ -453,10 +466,10 @@ EventHandler (OMX_HANDLETYPE hComponent, OMX_PTR pAppData, OMX_EVENTTYPE eEvent,
           msg->type = GST_OMX_MESSAGE_PORT_ENABLE;
           msg->content.port_enable.port = nData2;
           msg->content.port_enable.enable = (cmd == OMX_CommandPortEnable);
-          GST_DEBUG_OBJECT (comp->parent, "%s port %u %s", comp->name,
+          dbg ("%s: %s port %u %s\n",
+              GST_OBJECT_NAME (comp->parent), comp->name,
               (guint) msg->content.port_enable.port,
               (msg->content.port_enable.enable ? "enabled" : "disabled"));
-
           gst_omx_component_send_message (comp, msg);
           break;
         }
@@ -477,7 +490,8 @@ EventHandler (OMX_HANDLETYPE hComponent, OMX_PTR pAppData, OMX_EVENTTYPE eEvent,
 
       msg->type = GST_OMX_MESSAGE_ERROR;
       msg->content.error.error = nData1;
-      GST_ERROR_OBJECT (comp->parent, "%s got error: %s (0x%08x)", comp->name,
+      dbg ("%s: %s got error: %s (0x%08x)\n",
+          GST_OBJECT_NAME (comp->parent), comp->name,
           gst_omx_error_to_string (msg->content.error.error),
           msg->content.error.error);
 
@@ -505,9 +519,9 @@ EventHandler (OMX_HANDLETYPE hComponent, OMX_PTR pAppData, OMX_EVENTTYPE eEvent,
 
       msg->type = GST_OMX_MESSAGE_PORT_SETTINGS_CHANGED;
       msg->content.port_settings_changed.port = index;
-      GST_DEBUG_OBJECT (comp->parent, "%s settings changed (port index: %u)",
-          comp->name, (guint) msg->content.port_settings_changed.port);
-
+      dbg ("%s: %s settings changed (port index: %u)\n",
+          GST_OBJECT_NAME (comp->parent), comp->name,
+          (guint) msg->content.port_settings_changed.port);
       gst_omx_component_send_message (comp, msg);
       break;
     }
@@ -519,17 +533,17 @@ EventHandler (OMX_HANDLETYPE hComponent, OMX_PTR pAppData, OMX_EVENTTYPE eEvent,
       msg->type = GST_OMX_MESSAGE_BUFFER_FLAG;
       msg->content.buffer_flag.port = nData1;
       msg->content.buffer_flag.flags = nData2;
-      GST_DEBUG_OBJECT (comp->parent, "%s port %u got buffer flags 0x%08x",
-          comp->name, (guint) msg->content.buffer_flag.port,
+      dbg ("%s: %s port %u got buffer flags 0x%08x\n",
+          GST_OBJECT_NAME (comp->parent),
+          (guint) msg->content.buffer_flag.port,
           (guint) msg->content.buffer_flag.flags);
-
       gst_omx_component_send_message (comp, msg);
       break;
     }
     case OMX_EventPortFormatDetected:
     default:
-      GST_DEBUG_OBJECT (comp->parent, "%s unknown event 0x%08x", comp->name,
-          eEvent);
+      dbg ("%s: %s unknown event 0x%08x\n",
+          GST_OBJECT_NAME (comp->parent), comp->name, eEvent);
       break;
   }
 
@@ -546,14 +560,14 @@ EmptyBufferDone (OMX_HANDLETYPE hComponent, OMX_PTR pAppData,
 
   buf = pBuffer->pAppPrivate;
   if (!buf) {
-    GST_ERROR ("Have unknown or deallocated buffer %p", pBuffer);
+    dbg ("Have unknown or deallocated buffer %p\n", pBuffer);
     return OMX_ErrorNone;
   }
 
   g_assert (buf->omx_buf == pBuffer);
 
   if (buf->port->tunneled) {
-    GST_ERROR ("EmptyBufferDone on tunneled port");
+    dbg ("EmptyBufferDone on tunneled port");
     return OMX_ErrorBadParameter;
   }
 
@@ -566,8 +580,9 @@ EmptyBufferDone (OMX_HANDLETYPE hComponent, OMX_PTR pAppData,
   msg->content.buffer_done.buffer = pBuffer;
   msg->content.buffer_done.empty = OMX_TRUE;
 
-  GST_LOG_OBJECT (comp->parent, "%s port %u emptied buffer %p (%p)",
-      comp->name, buf->port->index, buf, buf->omx_buf->pBuffer);
+  dbg ("%s: %s port %u emptied buffer %p (%p)\n",
+      GST_OBJECT_NAME (comp->parent), comp->name,
+      buf->port->index, buf, buf->omx_buf->pBuffer);
 
   gst_omx_component_send_message (comp, msg);
 
@@ -584,14 +599,14 @@ FillBufferDone (OMX_HANDLETYPE hComponent, OMX_PTR pAppData,
 
   buf = pBuffer->pAppPrivate;
   if (!buf) {
-    GST_ERROR ("Have unknown or deallocated buffer %p", pBuffer);
+    g_print ("Have unknown or deallocated buffer %p\n", pBuffer);
     return OMX_ErrorNone;
   }
 
   g_assert (buf->omx_buf == pBuffer);
 
   if (buf->port->tunneled) {
-    GST_ERROR ("FillBufferDone on tunneled port");
+    g_print ("FillBufferDone on tunneled port\n");
     return OMX_ErrorBadParameter;
   }
 
@@ -603,10 +618,9 @@ FillBufferDone (OMX_HANDLETYPE hComponent, OMX_PTR pAppData,
   msg->content.buffer_done.app_data = pAppData;
   msg->content.buffer_done.buffer = pBuffer;
   msg->content.buffer_done.empty = OMX_FALSE;
-
-  GST_LOG_OBJECT (comp->parent, "%s port %u filled buffer %p (%p)", comp->name,
+  dbg ("%s: %s port %u filled buffer %p (%p)\n",
+      GST_OBJECT_NAME (comp->parent), comp->name,
       buf->port->index, buf, buf->omx_buf->pBuffer);
-
   gst_omx_component_send_message (comp, msg);
 
   return OMX_ErrorNone;
