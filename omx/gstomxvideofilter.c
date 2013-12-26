@@ -538,45 +538,34 @@ gst_omx_video_filter_handle_output_frame (GstOMXVideoFilter * self,
 
     GST_LOG_OBJECT (self, "Handling output data");
 
-    if (buf->omx_buf->nFilledLen > 0) {
-      if (self->always_copy) {
-        outbuf = gst_buffer_new_and_alloc (buf->omx_buf->nFilledLen);
+    if (self->always_copy) {
+      outbuf = gst_buffer_new_and_alloc (buf->omx_buf->nFilledLen);
 
-        gst_buffer_map (outbuf, &map, GST_MAP_WRITE);
-        memcpy (map.data,
-            buf->omx_buf->pBuffer + buf->omx_buf->nOffset,
-            buf->omx_buf->nFilledLen);
-        gst_buffer_unmap (outbuf, &map);
-      } else {
-        GstBufferPoolAcquireParams params = { 0, };
-#if 0
-        outbuf = gst_buffer_new_wrapped_full (0,
-            buf->omx_buf->pBuffer + buf->omx_buf->nOffset,
-            buf->omx_buf->nFilledLen,
-            0, buf->omx_buf->nFilledLen, buf, buffer_free);
-#else
-        idx = g_list_index (self->srcpads, srcpad);
-        outpool = g_list_nth_data (priv->output_pool, idx);
-
-        n = port->buffers->len;
-        for (i = 0; i < n; i++) {
-          GstOMXBuffer *tmp = g_ptr_array_index (port->buffers, i);
-
-          if (tmp == buf)
-            break;
-        }
-        g_assert (i != n);
-
-        GST_OMX_BUFFER_POOL (outpool)->current_buffer_index = i;
-        flow_ret = gst_buffer_pool_acquire_buffer (outpool, &outbuf, &params);
-        if (flow_ret != GST_FLOW_OK) {
-          gst_omx_port_release_buffer (port, buf);
-          goto invalid_buffer;
-        }
-#endif
-      }
+      gst_buffer_map (outbuf, &map, GST_MAP_WRITE);
+      memcpy (map.data,
+          buf->omx_buf->pBuffer + buf->omx_buf->nOffset,
+          buf->omx_buf->nFilledLen);
+      gst_buffer_unmap (outbuf, &map);
     } else {
-      outbuf = gst_buffer_new ();
+      GstBufferPoolAcquireParams params = { 0, };
+      idx = g_list_index (self->srcpads, srcpad);
+      outpool = g_list_nth_data (priv->output_pool, idx);
+
+      n = port->buffers->len;
+      for (i = 0; i < n; i++) {
+        GstOMXBuffer *tmp = g_ptr_array_index (port->buffers, i);
+
+        if (tmp == buf)
+          break;
+      }
+      g_assert (i != n);
+
+      GST_OMX_BUFFER_POOL (outpool)->current_buffer_index = i;
+      flow_ret = gst_buffer_pool_acquire_buffer (outpool, &outbuf, &params);
+      if (flow_ret != GST_FLOW_OK) {
+        gst_omx_port_release_buffer (port, buf);
+        goto invalid_buffer;
+      }
     }
 
     GST_BUFFER_TIMESTAMP (outbuf) =
