@@ -364,6 +364,7 @@ dnl *** output files ***
 AC_CONFIG_FILES(
 Makefile
 omx/Makefile
+gst/Makefile
 common/Makefile
 common/m4/Makefile
 tools/Makefile
