@@ -210,8 +210,7 @@ gst_omx_h264_enc_set_avc (GstOMXH264Enc * self)
 
   GST_OMX_INIT_STRUCT (&param);
 
-  param.nPortIndex =
-      OMX_DirOutput /*GST_OMX_VIDEO_ENC (self)->enc_out_port->index */ ;
+  param.nPortIndex = GST_OMX_VIDEO_ENC (self)->enc_out_port->index;
 
   err =
       gst_omx_component_get_parameter (GST_OMX_VIDEO_ENC (self)->enc,
@@ -221,10 +220,6 @@ gst_omx_h264_enc_set_avc (GstOMXH264Enc * self)
         "Setting encoding/rate control preset not supported by component");
     return TRUE;
   }
-
-  GST_DEBUG_OBJECT (self,
-      "Succesfully setting level %u, profile %u and i-frame period %u",
-      (guint) param.eLevel, (guint) param.eProfile, (guint) param.nPFrames);
 
   param.eLevel = self->level;
   param.eProfile = self->profile;
