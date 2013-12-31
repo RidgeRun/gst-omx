@@ -80,7 +80,8 @@ struct _GstOMXVideoEnc
   guint32 quant_p_frames;
   guint32 quant_b_frames;
   gboolean always_copy;
-
+  guint output_buffers;
+  guint input_buffers;
 
   GstFlowReturn downstream_flow_ret;
 };

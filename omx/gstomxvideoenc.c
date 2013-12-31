@@ -125,7 +125,9 @@ enum
   PROP_QUANT_I_FRAMES,
   PROP_QUANT_P_FRAMES,
   PROP_QUANT_B_FRAMES,
-  PROP_ALWAYS_COPY
+  PROP_ALWAYS_COPY,
+  PROP_OUTPUT_BUFFERS,
+  PROP_INPUT_BUFFERS
 };
 
 /* FIXME: Better defaults */
@@ -135,7 +137,8 @@ enum
 #define GST_OMX_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT (0xffffffff)
 #define GST_OMX_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT (0xffffffff)
 #define GST_OMX_VIDEO_ENC_ALWAYS_COPY_DEFAULT FALSE
-
+#define GST_OMX_VIDEO_ENC_OUTPUT_BUFFERS_DEFAULT 5
+#define GST_OMX_VIDEO_ENC_INPUT_BUFFERS_DEFAULT 5
 /* class initialization */
 
 #define DEBUG_INIT \
@@ -198,6 +201,16 @@ gst_omx_video_enc_class_init (GstOMXVideoEncClass * klass)
           "If the buffer will be used or not directly for the OpenMax component",
           GST_OMX_VIDEO_ENC_ALWAYS_COPY_DEFAULT, G_PARAM_WRITABLE));
 
+  g_object_class_install_property (gobject_class, PROP_OUTPUT_BUFFERS,
+      g_param_spec_uint ("output-buffers", "Output buffers",
+          "The amount of OMX output buffers",
+          1, 16, GST_OMX_VIDEO_ENC_OUTPUT_BUFFERS_DEFAULT, G_PARAM_READWRITE));
+
+  g_object_class_install_property (gobject_class, PROP_INPUT_BUFFERS,
+      g_param_spec_uint ("input-buffers", "Input buffers",
+          "The amount of OMX input buffers",
+          1, 16, GST_OMX_VIDEO_ENC_INPUT_BUFFERS_DEFAULT, G_PARAM_READWRITE));
+
   element_class->change_state =
       GST_DEBUG_FUNCPTR (gst_omx_video_enc_change_state);
 
@@ -233,6 +246,8 @@ gst_omx_video_enc_init (GstOMXVideoEnc * self)
   self->quant_p_frames = GST_OMX_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT;
   self->quant_b_frames = GST_OMX_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT;
   self->always_copy = GST_OMX_VIDEO_ENC_ALWAYS_COPY_DEFAULT;
+  self->output_buffers = GST_OMX_VIDEO_ENC_OUTPUT_BUFFERS_DEFAULT;
+  self->input_buffers = GST_OMX_VIDEO_ENC_INPUT_BUFFERS_DEFAULT;
 
   g_mutex_init (&self->drain_lock);
   g_cond_init (&self->drain_cond);
@@ -480,6 +495,12 @@ gst_omx_video_enc_set_property (GObject * object, guint prop_id,
     case PROP_ALWAYS_COPY:
       self->always_copy = g_value_get_boolean (value);
       break;
+    case PROP_OUTPUT_BUFFERS:
+      self->output_buffers = g_value_get_uint (value);
+      break;
+    case PROP_INPUT_BUFFERS:
+      self->input_buffers = g_value_get_uint (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -510,6 +531,12 @@ gst_omx_video_enc_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_ALWAYS_COPY:
       g_value_set_boolean (value, self->always_copy);
+      break;
+    case PROP_OUTPUT_BUFFERS:
+      g_value_set_uint (value, self->output_buffers);
+      break;
+    case PROP_INPUT_BUFFERS:
+      g_value_set_uint (value, self->input_buffers);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1275,6 +1302,7 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
       port_def.format.video.xFramerate = (info->fps_n) / (info->fps_d);
   }
 
+  port_def.nBufferCountActual = self->input_buffers;
   GST_DEBUG_OBJECT (self, "Setting inport port definition");
   if (gst_omx_port_update_port_definition (self->enc_in_port,
           &port_def) != OMX_ErrorNone)
@@ -1285,6 +1313,7 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
    * otherwise the configuration will be ignored */
   gst_omx_port_get_port_definition (self->enc_out_port, &port_def);
   port_def.format.video.xFramerate = (info->fps_n << 16) / (info->fps_d);
+  port_def.nBufferCountActual = self->output_buffers;
 
   GST_DEBUG_OBJECT (self, "Updating outport port definition");
   if (gst_omx_port_update_port_definition (self->enc_out_port,
