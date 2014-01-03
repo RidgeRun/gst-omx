@@ -91,19 +91,21 @@ static gboolean gst_omx_h264_enc_set_format (GstOMXVideoEnc * enc,
 static GstCaps *gst_omx_h264_enc_get_caps (GstOMXVideoEnc * enc,
     GstOMXPort * port, GstVideoCodecState * state);
 static GstFlowReturn gst_omx_h264_enc_handle_output_frame (GstOMXVideoEnc *
-    self, GstOMXPort * port, GstOMXBuffer * buf, GstVideoCodecFrame * frame);
+    enc, GstOMXPort * port, GstOMXBuffer * buf, GstVideoCodecFrame * frame);
 
 enum
 {
   PROP_0,
   PROP_I_PERIOD,
   PROP_ENCODING_PRESET,
-  PROP_RATE_CONTROL_PRESET
+  PROP_RATE_CONTROL_PRESET,
+  PROP_FORCE_IDR
 };
 
 #define GST_OMX_H264_ENC_I_PERIOD_DEFAULT 90
 #define GST_OMX_H264_ENC_ENCODING_PRESET_DEFAULT OMX_Video_Enc_High_Speed_Med_Quality
 #define GST_OMX_H264_ENC_RATE_CONTROL_PRESET_DEFAULT OMX_Video_RC_Low_Delay
+#define GST_OMX_H264_ENC_FORCE_IDR_DEFAULT  FALSE
 
 /* class initialization */
 
@@ -141,6 +143,11 @@ gst_omx_h264_enc_class_init (GstOMXH264EncClass * klass)
           GST_TYPE_OMX_H264_ENC_RATE_CONTROL_PRESET,
           GST_OMX_H264_ENC_RATE_CONTROL_PRESET_DEFAULT, G_PARAM_READWRITE));
 
+  g_object_class_install_property (gobject_class, PROP_FORCE_IDR,
+      g_param_spec_boolean ("force-idr", "Force IDR",
+          "Force next frame to be IDR", GST_OMX_H264_ENC_FORCE_IDR_DEFAULT,
+          G_PARAM_WRITABLE));
+
   videoenc_class->set_format = GST_DEBUG_FUNCPTR (gst_omx_h264_enc_set_format);
   videoenc_class->get_caps = GST_DEBUG_FUNCPTR (gst_omx_h264_enc_get_caps);
 
@@ -161,8 +168,48 @@ gst_omx_h264_enc_class_init (GstOMXH264EncClass * klass)
 static void
 gst_omx_h264_enc_init (GstOMXH264Enc * self)
 {
-
+  self->i_period = GST_OMX_H264_ENC_I_PERIOD_DEFAULT;
+  self->encoding_preset = GST_OMX_H264_ENC_ENCODING_PRESET_DEFAULT;
+  self->rate_control_preset = GST_OMX_H264_ENC_RATE_CONTROL_PRESET_DEFAULT;
 }
+
+static gboolean
+gst_omx_h264_enc_force_idr (GstOMXH264Enc * self)
+{
+  OMX_CONFIG_INTRAREFRESHVOPTYPE idr_config;
+  OMX_ERRORTYPE err;
+
+  GST_OMX_INIT_STRUCT (&idr_config);
+
+  idr_config.nPortIndex = GST_OMX_VIDEO_ENC (self)->enc_out_port->index;
+
+  err =
+      gst_omx_component_get_config (GST_OMX_VIDEO_ENC (self)->enc,
+      OMX_IndexConfigVideoIntraVOPRefresh, &idr_config);
+  if (err != OMX_ErrorNone) {
+    GST_WARNING_OBJECT (self,
+        "Setting encoding/rate control preset not supported by component");
+    return TRUE;
+  }
+
+  idr_config.IntraRefreshVOP = TRUE;
+
+  err =
+      gst_omx_component_set_config (GST_OMX_VIDEO_ENC (self)->enc,
+      OMX_IndexConfigVideoIntraVOPRefresh, &idr_config);
+  if (err == OMX_ErrorUnsupportedIndex) {
+    GST_WARNING_OBJECT (self,
+        "Setting idr configuration not supported by component");
+  } else if (err != OMX_ErrorNone) {
+    GST_ERROR_OBJECT (self,
+        "Error forcing idr : %s (0x%08x)", gst_omx_error_to_string (err), err);
+    return FALSE;
+  }
+
+  GST_DEBUG_OBJECT (self, "Succesfully force idr");
+  return TRUE;
+}
+
 
 static gboolean
 gst_omx_h264_enc_set_encoder_preset (GstOMXH264Enc * self)
@@ -497,9 +544,11 @@ gst_omx_h264_enc_get_caps (GstOMXVideoEnc * enc, GstOMXPort * port,
 }
 
 static GstFlowReturn
-gst_omx_h264_enc_handle_output_frame (GstOMXVideoEnc * self, GstOMXPort * port,
+gst_omx_h264_enc_handle_output_frame (GstOMXVideoEnc * enc, GstOMXPort * port,
     GstOMXBuffer * buf, GstVideoCodecFrame * frame)
 {
+  GstOMXH264Enc *self = GST_OMX_H264_ENC (enc);
+
   if (buf->omx_buf->nFlags & OMX_BUFFERFLAG_CODECCONFIG) {
     /* The codec data is SPS/PPS with a startcode => bytestream stream format
      * For bytestream stream format the SPS/PPS is only in-stream and not
@@ -527,9 +576,14 @@ gst_omx_h264_enc_handle_output_frame (GstOMXVideoEnc * self, GstOMXPort * port,
     }
   }
 
+  if (self->force_idr) {
+    gst_omx_h264_enc_force_idr (self);
+    self->force_idr = FALSE;
+  }
+
   return
       GST_OMX_VIDEO_ENC_CLASS
-      (gst_omx_h264_enc_parent_class)->handle_output_frame (self, port, buf,
+      (gst_omx_h264_enc_parent_class)->handle_output_frame (enc, port, buf,
       frame);
 }
 
@@ -548,6 +602,9 @@ gst_omx_h264_enc_set_property (GObject * object, guint prop_id,
       break;
     case PROP_RATE_CONTROL_PRESET:
       self->rate_control_preset = g_value_get_enum (value);
+      break;
+    case PROP_FORCE_IDR:
+      self->force_idr = g_value_get_boolean (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
