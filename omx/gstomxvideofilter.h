@@ -78,6 +78,9 @@ struct _GstOMXVideoFilter
 
   /* properties */
   gboolean always_copy;
+  guint output_buffers;
+  guint input_buffers;
+  
   /*< private > */
   GstOMXVideoFilterPrivate *priv;
 

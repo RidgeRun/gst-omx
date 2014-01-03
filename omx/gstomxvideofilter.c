@@ -176,10 +176,14 @@ OMX_COLOR_FORMATTYPE gst_omx_video_filter_get_color_format (GstVideoFormat
 enum
 {
   PROP_0,
-  PROP_ALWAYS_COPY
+  PROP_ALWAYS_COPY,
+  PROP_OUTPUT_BUFFERS,
+  PROP_INPUT_BUFFERS
 };
 
 #define GST_OMX_VIDEO_FILTER_ALWAYS_COPY_DEFAULT FALSE
+#define GST_OMX_VIDEO_FILTER_OUTPUT_BUFFERS_DEFAULT 6
+#define GST_OMX_VIDEO_FILTER_INPUT_BUFFERS_DEFAULT 6
 
 /* we can't use G_DEFINE_ABSTRACT_TYPE because we need the klass in the _init
  * method to get to the padtemplates */
@@ -238,6 +242,18 @@ gst_omx_video_filter_class_init (GstOMXVideoFilterClass * klass)
       g_param_spec_boolean ("always-copy", "Always copy",
           "If the buffer will be used or not directly for the OpenMax component",
           GST_OMX_VIDEO_FILTER_ALWAYS_COPY_DEFAULT, G_PARAM_WRITABLE));
+
+  g_object_class_install_property (gobject_class, PROP_OUTPUT_BUFFERS,
+      g_param_spec_uint ("output-buffers", "Output buffers",
+          "The amount of OMX output buffers",
+          1, 16, GST_OMX_VIDEO_FILTER_OUTPUT_BUFFERS_DEFAULT,
+          G_PARAM_READWRITE));
+
+  g_object_class_install_property (gobject_class, PROP_INPUT_BUFFERS,
+      g_param_spec_uint ("input-buffers", "Input buffers",
+          "The amount of OMX input buffers",
+          1, 16, GST_OMX_VIDEO_FILTER_INPUT_BUFFERS_DEFAULT,
+          G_PARAM_READWRITE));
 
   element_class->change_state =
       GST_DEBUG_FUNCPTR (gst_omx_video_filter_change_state);
@@ -335,6 +351,9 @@ gst_omx_video_filter_init (GstOMXVideoFilter * self,
   self->out_port = NULL;
 
   self->always_copy = GST_OMX_VIDEO_FILTER_ALWAYS_COPY_DEFAULT;
+  self->input_buffers = GST_OMX_VIDEO_FILTER_INPUT_BUFFERS_DEFAULT;
+  self->output_buffers = GST_OMX_VIDEO_FILTER_OUTPUT_BUFFERS_DEFAULT;
+
   gst_omx_video_filter_reset (self);
 
   g_rec_mutex_init (&self->stream_lock);
@@ -1175,7 +1194,7 @@ gst_omx_video_filter_set_format (GstOMXVideoFilter * self, GstCaps * incaps,
   }
   port_def.nBufferAlignment = 0;
   port_def.bBuffersContiguous = 0;
-  port_def.nBufferCountActual = 6;
+  port_def.nBufferCountActual = self->input_buffers;
   port_def.format.video.nStride = GST_VIDEO_INFO_PLANE_STRIDE (ininfo, 0);
   /* Calculating input buffer size */
   port_def.nBufferSize =
@@ -1206,7 +1225,7 @@ gst_omx_video_filter_set_format (GstOMXVideoFilter * self, GstCaps * incaps,
     }
     port_def.nBufferAlignment = 0;
     port_def.bBuffersContiguous = 0;
-    port_def.nBufferCountActual = 6;
+    port_def.nBufferCountActual = self->output_buffers;
     /* scalar buffer pitch should be multiple of 16 */
     port_def.format.video.nStride =
         ((port_def.format.video.nFrameWidth + 15) & 0xfffffff0) * 2;
@@ -1617,6 +1636,12 @@ gst_omx_video_filter_set_property (GObject * object, guint prop_id,
     case PROP_ALWAYS_COPY:
       self->always_copy = g_value_get_boolean (value);
       break;
+    case PROP_OUTPUT_BUFFERS:
+      self->output_buffers = g_value_get_uint (value);
+      break;
+    case PROP_INPUT_BUFFERS:
+      self->input_buffers = g_value_get_uint (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1632,6 +1657,12 @@ gst_omx_video_filter_get_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_ALWAYS_COPY:
       g_value_set_boolean (value, self->always_copy);
+      break;
+    case PROP_OUTPUT_BUFFERS:
+      g_value_set_uint (value, self->output_buffers);
+      break;
+    case PROP_INPUT_BUFFERS:
+      g_value_set_uint (value, self->input_buffers);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
