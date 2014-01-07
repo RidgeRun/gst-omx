@@ -293,7 +293,8 @@ AG_GST_DEFAULT_ELEMENTS
 dnl *** plug-ins to include ***
 
 dnl these are all the gst plug-ins, compilable without additional libs
-AG_GST_CHECK_PLUGIN(omx)
+AG_GST_CHECK_PLUGIN(perf)
+AG_GST_CHECK_PLUGIN(h264parser)
 
 dnl check for gstreamer core features (subsystems)
 dnl FIXME: this assumes srcdir == builddir for uninstalled setups
@@ -365,6 +366,8 @@ AC_CONFIG_FILES(
 Makefile
 omx/Makefile
 gst/Makefile
+gst/h264parser/Makefile
+gst/perf/Makefile
 common/Makefile
 common/m4/Makefile
 tools/Makefile

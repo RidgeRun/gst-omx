@@ -1,21 +1,4 @@
-# Note: plugindir is set in configure
+SUBDIRS = $(GST_PLUGINS_SELECTED)
+DIST_SUBDIRS = $(GST_PLUGINS_ALL)
 
-plugin_LTLIBRARIES = libgstperf.la
-
-# sources used to compile this plug-in
-libgstperf_la_SOURCES = gstperf.c
-
-# compiler and linker flags used to compile this plugin, set in configure.ac
-libgstperf_la_CFLAGS = \
-	$(GST_PLUGINS_BASE_CFLAGS) \
-	$(GST_BASE_CFLAGS) \
-	$(GST_CFLAGS)
-libgstperf_la_LIBADD = \
-	$(GST_PLUGINS_BASE_LIBS) \
-	$(GST_BASE_LIBS)
-	$(GST_LIBS)
-libgstperf_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
-libgstperf_la_LIBTOOLFLAGS = --tag=disable-static
-
-# headers we need but don't want installed
-noinst_HEADERS = gstperf.h
+include $(top_srcdir)/common/parallel-subdirs.mak
