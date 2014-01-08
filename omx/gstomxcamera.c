@@ -48,6 +48,7 @@
 GST_DEBUG_CATEGORY_STATIC (gst_omx_camera_debug);
 #define GST_CAT_DEFAULT gst_omx_camera_debug
 
+
 enum
 {
   PROP_0,
@@ -56,7 +57,8 @@ enum
   PROP_INTERFACE,
   PROP_CAPT_MODE,
   PROP_VIP_MODE,
-  PROP_SCAN_TYPE
+  PROP_SCAN_TYPE,
+  PROP_SKIP_FRAMES
 };
 
 #define gst_omx_camera_parent_class parent_class
@@ -73,6 +75,7 @@ static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE ("src",
         "height = (int) [ 16, 1080 ] , " "framerate = " GST_VIDEO_FPS_RANGE)
     );
 
+#define MAX_SHIFTS	30
 /* Properties defaults */
 #define PROP_ALWAYS_COPY_DEFAULT          FALSE
 #define PROP_NUM_OUT_BUFFERS_DEFAULT      5
@@ -80,6 +83,7 @@ static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE ("src",
 #define PROP_CAPT_MODE_DEFAULT            OMX_VIDEO_CaptureModeSC_NON_MUX
 #define PROP_VIP_MODE_DEFAULT             OMX_VIDEO_CaptureVifMode_16BIT
 #define PROP_SCAN_TYPE_DEFAULT            OMX_VIDEO_CaptureScanTypeProgressive
+#define PROP_SKIP_FRAMES_DEFAULT          0
 
 /* Properties enumerates */
 #define GST_OMX_CAMERA_INTERFACE_TYPE (gst_omx_camera_interface_get_type())
@@ -226,6 +230,11 @@ gst_omx_camera_class_init (GstOMXCameraClass * klass)
           "If the output buffer should be copied or should use the OpenMax buffer",
           PROP_ALWAYS_COPY_DEFAULT, G_PARAM_WRITABLE));
 
+  g_object_class_install_property (gobject_class, PROP_SKIP_FRAMES,
+      g_param_spec_uint ("skip-frames", "Skip Frames",
+          "Skip this amount of frames after a vaild frame",
+          0, 30, PROP_SKIP_FRAMES_DEFAULT, G_PARAM_READWRITE));
+
   element_class->change_state = gst_omx_camera_change_state;
 
   gst_element_class_set_static_metadata (element_class,
@@ -272,6 +281,48 @@ gst_omx_camera_init (GstOMXCamera * self)
   self->scan_type = PROP_SCAN_TYPE_DEFAULT;
   self->always_copy = PROP_ALWAYS_COPY_DEFAULT;
   self->num_buffers = PROP_NUM_OUT_BUFFERS_DEFAULT;
+  self->skip_frames = PROP_SKIP_FRAMES_DEFAULT;
+}
+
+static void
+gst_omx_camera_set_skip_frames (GstOMXCamera * self)
+{
+  OMX_ERRORTYPE err;
+  OMX_CONFIG_VFCC_FRAMESKIP_INFO skip_frames;
+  guint32 shifts = 0, skip = 0, i = 0, count = 0;
+  shifts = self->skip_frames;
+
+  if (shifts) {
+    while (count < MAX_SHIFTS) {
+      if ((count + shifts) > MAX_SHIFTS)
+        shifts = MAX_SHIFTS - count;
+
+      for (i = 0; i < shifts; i++) {
+        skip = (skip << 1) | 1;
+        count++;
+      }
+
+      if (count < MAX_SHIFTS) {
+        skip = skip << 1;
+        count++;
+      }
+    }
+  }
+
+  GST_OMX_INIT_STRUCT (&skip_frames);
+  /* OMX_TI_IndexConfigVFCCFrameSkip is for dropping frames in capture,
+     it is a binary 30bit value where 1 means drop a frame and 0
+     process the frame */
+  skip_frames.frameSkipMask = skip;
+  err =
+      gst_omx_component_set_config (self->comp,
+      OMX_TI_IndexConfigVFCCFrameSkip, &skip_frames);
+  if (err != OMX_ErrorNone)
+    GST_WARNING_OBJECT (self,
+        "Failed to set capture skip frames to %d: %s (0x%08x)", shifts,
+        gst_omx_error_to_string (err), err);
+
+  return;
 }
 
 static void
@@ -299,6 +350,11 @@ gst_omx_camera_set_property (GObject * object,
     case PROP_NUM_OUT_BUFFERS:
       self->num_buffers = g_value_get_uint (value);
       break;
+    case PROP_SKIP_FRAMES:
+      self->skip_frames = g_value_get_uint (value);
+      if (self->comp)
+        gst_omx_camera_set_skip_frames (self);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -310,6 +366,7 @@ gst_omx_camera_get_property (GObject * object,
     guint prop_id, GValue * value, GParamSpec * pspec)
 {
   GstOMXCamera *self = GST_OMX_CAMERA (object);
+  OMX_ERRORTYPE err;
 
   switch (prop_id) {
     case PROP_INTERFACE:
@@ -330,6 +387,25 @@ gst_omx_camera_get_property (GObject * object,
     case PROP_NUM_OUT_BUFFERS:
       g_value_set_uint (value, self->num_buffers);
       break;
+    case PROP_SKIP_FRAMES:
+    {
+      if (self->comp) {
+        OMX_CONFIG_VFCC_FRAMESKIP_INFO skip_frames;
+
+        err =
+            gst_omx_component_set_config (self->comp,
+            OMX_TI_IndexConfigVFCCFrameSkip, &skip_frames);
+        if (err != OMX_ErrorNone)
+          GST_ERROR_OBJECT (self,
+              "Failed to get capture skip frames: %s (0x%08x)",
+              gst_omx_error_to_string (err), err);
+
+        g_value_set_uint (value, skip_frames.frameSkipMask);
+      } else {
+        g_value_set_uint (value, self->skip_frames);
+      }
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -658,6 +734,8 @@ gst_omx_camera_set_format (GstOMXCamera * self, GstCaps * caps,
       hw_port_param.eCaptMode, hw_port_param.eVifMode, hw_port_param.nMaxHeight,
       hw_port_param.nMaxWidth, hw_port_param.nMaxChnlsPerHwPort,
       hw_port_param.eScanType, hw_port_param.eInColorFormat);
+
+  gst_omx_camera_set_skip_frames (self);
 
   /* Configure output pool */
   config = gst_buffer_pool_get_config (self->outpool);
