@@ -79,6 +79,7 @@ struct _GstOMXCamera
   gint vip_mode;
   gint scan_type;
   gint num_buffers;
+  guint skip_frames;
 
   /*< private > */
   GstOMXCameraPrivate *priv;
