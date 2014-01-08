@@ -933,6 +933,9 @@ gst_omx_video_enc_loop (GstOMXVideoEnc * self)
 
   self->downstream_flow_ret = flow_ret;
 
+  if (self->draining)
+    g_cond_broadcast (&self->drain_cond);
+
   GST_DEBUG_OBJECT (self, "Read frame from component");
 
   if (flow_ret != GST_FLOW_OK)
@@ -2027,9 +2030,38 @@ gst_omx_video_enc_drain (GstOMXVideoEnc * self, gboolean at_eos)
     self->eos = TRUE;
 
   if ((klass->cdata.hacks & GST_OMX_HACK_NO_EMPTY_EOS_BUFFER)) {
+    GList *frames;
+    guint i, pending_frames;
     GST_WARNING_OBJECT (self, "Component does not support empty EOS buffers");
+
+    /* Make sure to release the base class stream lock, otherwise
+     * _loop() can't call _finish_frame() and we might block forever
+     * because no input buffers are released */
+    GST_VIDEO_ENCODER_STREAM_UNLOCK (self);
+
+    /* Component draining */
+    self->draining = TRUE;
+    /* Get the number of pending frames */
+    frames = gst_video_encoder_get_frames (GST_VIDEO_ENCODER (self));
+    pending_frames = g_list_length (frames);
+    g_list_foreach (frames, (GFunc) gst_video_codec_frame_unref, NULL);
+    g_list_free (frames);
+
+    GST_DEBUG_OBJECT (self,
+        "Waiting until component is drained, %d pending frames",
+        pending_frames);
+    for (i = 0; i < pending_frames; i++) {
+      g_mutex_lock (&self->drain_lock);
+      g_cond_wait (&self->drain_cond, &self->drain_lock);
+      g_mutex_unlock (&self->drain_lock);
+    }
+    GST_DEBUG_OBJECT (self, "Drained component");
+    self->draining = FALSE;
+
+    GST_VIDEO_ENCODER_STREAM_LOCK (self);
     return GST_FLOW_OK;
   }
+
 
   /* Make sure to release the base class stream lock, otherwise
    * _loop() can't call _finish_frame() and we might block forever
