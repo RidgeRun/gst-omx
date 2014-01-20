@@ -461,6 +461,7 @@ gst_rr_h264_parser_to_packetized (GstRrH264Parser * self, GstBuffer * buffer)
         if ((curr_nal_type == GST_H264_NAL_SPS)
             || (curr_nal_type == GST_H264_NAL_PPS)) {
           GST_DEBUG_OBJECT (self, "single NALU, found a I-frame");
+          GST_BUFFER_FLAG_UNSET (buffer, GST_BUFFER_FLAG_DELTA_UNIT);
           /* Caution: here we are asumming the output buffer only 
            * has one memory block*/
           info.memory->offset = self->header_size;
@@ -468,6 +469,7 @@ gst_rr_h264_parser_to_packetized (GstRrH264Parser * self, GstBuffer * buffer)
           mark = i + self->header_size + 1;
         } else {
           GST_DEBUG_OBJECT (self, "single NALU, found a P-frame");
+          GST_BUFFER_FLAG_SET (buffer, GST_BUFFER_FLAG_DELTA_UNIT);
           mark = i + 1;
         }
         i = size - NAL_LENGTH;
@@ -481,6 +483,7 @@ gst_rr_h264_parser_to_packetized (GstRrH264Parser * self, GstBuffer * buffer)
           info.memory->offset = i - NAL_LENGTH + 1;
           gst_buffer_set_size (buffer, size - (i - NAL_LENGTH + 1));
           GST_DEBUG_OBJECT (self, "SPS and PPS discard");
+          GST_BUFFER_FLAG_UNSET (buffer, GST_BUFFER_FLAG_DELTA_UNIT);
         } else if (prev_nal_type != -1) {
           /* Replace the NAL start code with the length */
           gint length = i - mark - NAL_LENGTH + 1;
