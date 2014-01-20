@@ -763,6 +763,11 @@ gst_omx_video_enc_handle_output_frame (GstOMXVideoEnc * self, GstOMXPort * port,
       outbuf = gst_buffer_new ();
     }
 
+    gst_buffer_add_video_meta (outbuf, GST_VIDEO_FRAME_FLAG_NONE,
+        GST_VIDEO_FORMAT_ENCODED,
+        GST_VIDEO_INFO_WIDTH (&self->input_state->info),
+        GST_VIDEO_INFO_HEIGHT (&self->input_state->info));
+
     GST_BUFFER_TIMESTAMP (outbuf) =
         gst_util_uint64_scale (buf->omx_buf->nTimeStamp, GST_SECOND,
         OMX_TICKS_PER_SECOND);
