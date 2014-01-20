@@ -97,12 +97,14 @@ enum
 {
   PROP_0,
   PROP_I_PERIOD,
+  PROP_IDR_PERIOD,
   PROP_ENCODING_PRESET,
   PROP_RATE_CONTROL_PRESET,
   PROP_FORCE_IDR
 };
 
 #define GST_OMX_H264_ENC_I_PERIOD_DEFAULT 90
+#define GST_OMX_H264_ENC_IDR_PERIOD_DEFAULT 0
 #define GST_OMX_H264_ENC_ENCODING_PRESET_DEFAULT OMX_Video_Enc_High_Speed_Med_Quality
 #define GST_OMX_H264_ENC_RATE_CONTROL_PRESET_DEFAULT OMX_Video_RC_Low_Delay
 #define GST_OMX_H264_ENC_FORCE_IDR_DEFAULT  FALSE
@@ -130,6 +132,12 @@ gst_omx_h264_enc_class_init (GstOMXH264EncClass * klass)
       g_param_spec_uint ("i-period", "I period",
           "Specifies periodicity of I frames (0:Disable)",
           0, G_MAXINT32, GST_OMX_H264_ENC_I_PERIOD_DEFAULT, G_PARAM_READWRITE));
+
+  g_object_class_install_property (gobject_class, PROP_IDR_PERIOD,
+      g_param_spec_uint ("idr-period", "IDR period",
+          "Specifies periodicity of IDR frames (0:Only the first frame to be IDR)",
+          0, G_MAXINT32, GST_OMX_H264_ENC_IDR_PERIOD_DEFAULT,
+          G_PARAM_READWRITE));
 
   g_object_class_install_property (gobject_class, PROP_ENCODING_PRESET,
       g_param_spec_enum ("encoding-preset", "Encoding Preset",
@@ -169,8 +177,11 @@ static void
 gst_omx_h264_enc_init (GstOMXH264Enc * self)
 {
   self->i_period = GST_OMX_H264_ENC_I_PERIOD_DEFAULT;
+  self->idr_period = GST_OMX_H264_ENC_FORCE_IDR_DEFAULT;
   self->encoding_preset = GST_OMX_H264_ENC_ENCODING_PRESET_DEFAULT;
   self->rate_control_preset = GST_OMX_H264_ENC_RATE_CONTROL_PRESET_DEFAULT;
+
+  self->idr_count = 0;
 }
 
 static gboolean
@@ -576,6 +587,15 @@ gst_omx_h264_enc_handle_output_frame (GstOMXVideoEnc * enc, GstOMXPort * port,
     }
   }
 
+  if (self->idr_period) {
+    if (self->idr_period == self->idr_count) {
+      self->force_idr = TRUE;
+      self->idr_count = 0;
+    } else {
+      self->idr_count++;
+    }
+  }
+
   if (self->force_idr) {
     gst_omx_h264_enc_force_idr (self);
     self->force_idr = FALSE;
@@ -596,6 +616,9 @@ gst_omx_h264_enc_set_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_I_PERIOD:
       self->i_period = g_value_get_uint (value);
+      break;
+    case PROP_IDR_PERIOD:
+      self->idr_period = g_value_get_uint (value);
       break;
     case PROP_ENCODING_PRESET:
       self->encoding_preset = g_value_get_enum (value);
@@ -621,6 +644,9 @@ gst_omx_h264_enc_get_property (GObject * object, guint prop_id, GValue * value,
   switch (prop_id) {
     case PROP_I_PERIOD:
       g_value_set_uint (value, self->i_period);
+      break;
+    case PROP_IDR_PERIOD:
+      g_value_set_uint (value, self->idr_period);
       break;
     case PROP_ENCODING_PRESET:
       g_value_set_enum (value, self->encoding_preset);

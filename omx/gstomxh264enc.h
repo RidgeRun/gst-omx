@@ -52,6 +52,8 @@ struct _GstOMXH264Enc
 
   /* properties */
   guint32 i_period;
+  guint32 idr_period;
+  guint32 idr_count;
   guint32 encoding_preset;
   guint32 rate_control_preset;
   gboolean force_idr;
