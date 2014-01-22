@@ -745,6 +745,11 @@ gst_omx_camera_set_format (GstOMXCamera * self, GstCaps * caps,
   if (!gst_buffer_pool_set_config (self->outpool, config))
     goto config_pool_failed;
 
+  /* Calculate duration based on the framerate to use it in case
+   * nTickCount is not provided by the OMX component */
+  self->duration = gst_util_uint64_scale_int (GST_SECOND,
+      GST_VIDEO_INFO_FPS_D (info), GST_VIDEO_INFO_FPS_N (info));
+
   return TRUE;
 
 drain_failed:
@@ -1034,6 +1039,8 @@ gst_omx_camera_get_buffer (GstOMXCamera * self, GstBuffer ** outbuf)
     GST_BUFFER_DURATION (*outbuf) =
         gst_util_uint64_scale (buf->omx_buf->nTickCount, GST_SECOND,
         OMX_TICKS_PER_SECOND);
+  else
+    GST_BUFFER_DURATION (*outbuf) = self->duration;
 
   GST_DEBUG_OBJECT (self,
       "Got buffer from component: %p with timestamp %" GST_TIME_FORMAT
@@ -1164,7 +1171,6 @@ gst_omx_camera_create (GstPushSrc * src, GstBuffer ** buf)
     goto error;
 
   timestamp = GST_BUFFER_TIMESTAMP (*buf);
-  duration = self->duration;
 
   if (!self->started) {
     self->running_time = abs_time - base_time;
@@ -1187,7 +1193,6 @@ gst_omx_camera_create (GstPushSrc * src, GstBuffer ** buf)
       GST_TIME_ARGS (timestamp));
 
   GST_BUFFER_TIMESTAMP (*buf) = timestamp;
-  GST_BUFFER_DURATION (*buf) = duration;
 
   return ret;
 
