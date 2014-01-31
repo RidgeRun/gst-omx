@@ -41,6 +41,8 @@ typedef struct _GstRrH264ParserClass GstRrH264ParserClass;
 struct _GstRrH264Parser
 {
   GstBaseTransform element;
+  
+  GstCaps *caps;
 
   guint header_size;
   gboolean single_nalu;

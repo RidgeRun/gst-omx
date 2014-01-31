@@ -102,6 +102,7 @@ gst_rr_h264_parser_class_init (GstRrH264ParserClass * klass)
 
   gobject_class = (GObjectClass *) klass;
   element_class = GST_ELEMENT_CLASS (klass);
+  base_transform_class = GST_BASE_TRANSFORM_CLASS (klass);
 
   gobject_class->set_property = gst_rr_h264_parser_set_property;
   gobject_class->get_property = gst_rr_h264_parser_get_property;
@@ -221,7 +222,7 @@ gst_rr_h264_parser_transform_caps (GstBaseTransform * btrans,
 
   result = tmp;
 
-  GST_DEBUG_OBJECT (btrans, "transformed (%" GST_PTR_FORMAT ") %s into (%"
+  GST_INFO_OBJECT (btrans, "transformed (%" GST_PTR_FORMAT ") %s into (%"
       GST_PTR_FORMAT ") %s", caps, str1 = gst_caps_to_string (caps),
       result, str2 = gst_caps_to_string (result));
 
@@ -238,7 +239,9 @@ static gboolean
 gst_rr_h264_parser_set_caps (GstBaseTransform * btrans, GstCaps * incaps,
     GstCaps * outcaps)
 {
+  GstRrH264Parser *self = GST_RR_H264_PARSER (btrans);
   gchar *str1 = NULL, *str2 = NULL;
+
   GST_INFO_OBJECT (btrans,
       "setting input caps: (%" GST_PTR_FORMAT ") %s output caps: (%"
       GST_PTR_FORMAT ") %s", incaps, str1 =
@@ -247,9 +250,15 @@ gst_rr_h264_parser_set_caps (GstBaseTransform * btrans, GstCaps * incaps,
 
   if (str1)
     g_free (str1);
-
   if (str2)
     g_free (str2);
+
+  if (self->caps) {
+    if (!gst_caps_is_equal (self->caps, outcaps)) {
+      /* Codec data should be updated */
+      self->set_codec_data = FALSE;
+    }
+  }
 
   return TRUE;
 }
@@ -403,27 +412,42 @@ gst_rr_h264_parser_set_codec_data (GstRrH264Parser * self, GstBuffer * buf)
 
   GstBuffer *codec_data;
   GstCaps *src_caps, *caps;
+  gchar *str = NULL;
 
   /* Generate the codec data with the SPS and the PPS */
   if (!gst_rr_h264_parser_get_codec_data (self, buf, &codec_data)) {
-    GST_ERROR_OBJECT (self, "Failed to get codec data");
+    GST_WARNING_OBJECT (self, "Failed to get codec data");
     return FALSE;
   }
 
   /* Update the caps with the codec data */
   src_caps = gst_pad_get_current_caps (GST_BASE_TRANSFORM_SRC_PAD (self));
   caps = gst_caps_copy (src_caps);
+  gst_caps_unref (src_caps);
+
   gst_caps_set_simple (caps, "codec_data", GST_TYPE_BUFFER, codec_data,
       (char *) NULL);
-  if (!gst_pad_set_caps (GST_BASE_TRANSFORM_SRC_PAD (self), caps)) {
-    GST_WARNING_OBJECT (self, "Src caps can't be updated");
-  }
-
-  gst_caps_unref (src_caps);
-  gst_caps_unref (caps);
   gst_buffer_unref (codec_data);
 
+  if (!gst_pad_set_caps (GST_BASE_TRANSFORM_SRC_PAD (self), caps))
+    goto failed_codec_data;
+
+  if (self->caps)
+    gst_caps_unref (self->caps);
+  self->caps = caps;
+
+  GST_INFO_OBJECT (self,
+      "updated caps with codec data (%" GST_PTR_FORMAT ") %s ", caps, str =
+      gst_caps_to_string (caps));
+  if (str)
+    g_free (str);
+
   return TRUE;
+
+failed_codec_data:
+  GST_WARNING_OBJECT (self, "Src caps can't be updated");
+  gst_caps_unref (caps);
+  return FALSE;
 }
 
 /* Function that change the content of the buffer to packetizer */
@@ -525,10 +549,9 @@ gst_rr_h264_parser_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
 
   /* Obtain and set codec data */
   if (!self->set_codec_data) {
-    if (!gst_rr_h264_parser_set_codec_data (self, buf)) {
-      GST_WARNING ("Problems for generate codec data");
+    if (gst_rr_h264_parser_set_codec_data (self, buf)) {
+      self->set_codec_data = TRUE;
     }
-    self->set_codec_data = TRUE;
   }
 
   /* Change the buffer content to packetized */
