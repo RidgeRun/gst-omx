@@ -1793,6 +1793,12 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
      * _loop() can't call _finish_frame() and we might block forever
      * because no input buffers are released */
     GST_VIDEO_ENCODER_STREAM_UNLOCK (self);
+
+    if (self->sharing) {
+      omxmem = (GstOMXMemory *) gst_buffer_peek_memory (frame->input_buffer, 0);
+      buf = omxmem->buf;
+    }
+
     acq_ret = gst_omx_port_acquire_buffer (port, &buf);
 
     if (acq_ret == GST_OMX_ACQUIRE_BUFFER_ERROR) {
@@ -1859,6 +1865,14 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
 
     g_assert (acq_ret == GST_OMX_ACQUIRE_BUFFER_OK && buf != NULL);
 
+    if (self->sharing) {
+      if (buf->omx_buf->pBuffer != omxmem->buf->omx_buf->pBuffer) {
+        GST_WARNING_OBJECT (self,
+            "OMX input buffer %p and encoder buffer %p doesn't match",
+            omxmem->buf->omx_buf->pBuffer, buf->omx_buf->pBuffer);
+      }
+    }
+
     if (buf->omx_buf->nAllocLen - buf->omx_buf->nOffset <= 0) {
       gst_omx_port_release_buffer (port, buf);
       goto full_buffer;
@@ -1888,14 +1902,6 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
             gst_omx_error_to_string (err), err);
     }
 
-    if (self->sharing) {
-      omxmem = (GstOMXMemory *) gst_buffer_peek_memory (frame->input_buffer, 0);
-      if (buf->omx_buf->pBuffer != omxmem->buf->omx_buf->pBuffer) {
-        GST_WARNING_OBJECT (self,
-            "OMX input buffer %p and encoder buffer %p doesn't match",
-            omxmem->buf->omx_buf->pBuffer, buf->omx_buf->pBuffer);
-      }
-    }
     /* Copy the buffer content in chunks of size as requested
      * by the port */
     if (!gst_omx_video_enc_fill_buffer (self, frame->input_buffer, buf)) {
@@ -1924,6 +1930,10 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
         (GDestroyNotify) buffer_identification_free);
 
     self->started = TRUE;
+    /* Setting the input GstBuffer reference in order to be realeased after 
+     * the corresponding empty callback and avoids this buffer
+     * be returned when it still being used by the OMX component */
+    buf->gst_buf = gst_buffer_ref (frame->input_buffer);
     err = gst_omx_port_release_buffer (port, buf);
     if (err != OMX_ErrorNone)
       goto release_error;

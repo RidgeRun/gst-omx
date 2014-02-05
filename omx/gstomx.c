@@ -399,6 +399,11 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
 
         g_queue_push_tail (&port->pending_buffers, buf);
 
+        if (buf->gst_buf) {
+          gst_buffer_unref (buf->gst_buf);
+          buf->gst_buf = NULL;
+        }
+
         break;
       }
       default:{
@@ -1211,7 +1216,19 @@ gst_omx_port_update_port_definition (GstOMXPort * port,
   return err;
 }
 
-/* NOTE: Uses comp->lock and comp->messages_lock */
+/* Return 0 when OMX buffer pointers are equal */
+static gint
+gst_omx_port_compare_buffers (gconstpointer a, gconstpointer b)
+{
+  GstOMXBuffer *buf1 = (GstOMXBuffer *) a;
+  GstOMXBuffer *buf2 = (GstOMXBuffer *) b;
+
+  return buf1->omx_buf->pBuffer - buf2->omx_buf->pBuffer;
+}
+
+/* NOTE: Uses comp->lock and comp->messages_lock 
+ * If *buf is not NULL the buffer containing the given omx pointer
+ * is going to be returned */
 GstOMXAcquireBufferReturn
 gst_omx_port_acquire_buffer (GstOMXPort * port, GstOMXBuffer ** buf)
 {
@@ -1223,8 +1240,6 @@ gst_omx_port_acquire_buffer (GstOMXPort * port, GstOMXBuffer ** buf)
   g_return_val_if_fail (port != NULL, GST_OMX_ACQUIRE_BUFFER_ERROR);
   g_return_val_if_fail (!port->tunneled, GST_OMX_ACQUIRE_BUFFER_ERROR);
   g_return_val_if_fail (buf != NULL, GST_OMX_ACQUIRE_BUFFER_ERROR);
-
-  *buf = NULL;
 
   comp = port->comp;
 
@@ -1306,7 +1321,6 @@ retry:
       GST_DEBUG_OBJECT (comp->parent, "%s output port %u is EOS but has "
           "buffers pending", comp->name, port->index);
       _buf = g_queue_pop_head (&port->pending_buffers);
-
       ret = GST_OMX_ACQUIRE_BUFFER_OK;
       goto done;
     }
@@ -1342,7 +1356,23 @@ retry:
   } else {
     GST_DEBUG_OBJECT (comp->parent, "%s port %u has pending buffers",
         comp->name, port->index);
-    _buf = g_queue_pop_head (&port->pending_buffers);
+    if (*buf) {
+      GList *l;
+      l = g_queue_find_custom (&port->pending_buffers, *buf,
+          gst_omx_port_compare_buffers);
+      if (l == NULL) {
+        GST_WARNING_OBJECT (comp->parent,
+            "OMX buffer %p wasn't found on pending queue",
+            (*buf)->omx_buf->pBuffer);
+        goto done;
+      }
+      _buf = l->data;
+      if (!g_queue_remove (&port->pending_buffers, _buf))
+        GST_WARNING_OBJECT (comp->parent, "Can't remove buffer %p from queue",
+            _buf);
+    } else {
+      _buf = g_queue_pop_head (&port->pending_buffers);
+    }
     ret = GST_OMX_ACQUIRE_BUFFER_OK;
     goto done;
   }
@@ -1402,6 +1432,10 @@ gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
     GST_ERROR_OBJECT (comp->parent, "Component %s is in error state: %s "
         "(0x%08x)", comp->name, gst_omx_error_to_string (err), err);
     g_queue_push_tail (&port->pending_buffers, buf);
+    if (buf->gst_buf) {
+      gst_buffer_unref (buf->gst_buf);
+      buf->gst_buf = NULL;
+    }
     gst_omx_component_send_message (comp, NULL);
     goto done;
   }
@@ -1410,6 +1444,10 @@ gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
     GST_DEBUG_OBJECT (comp->parent, "%s port %u is flushing, not releasing "
         "buffer", comp->name, port->index);
     g_queue_push_tail (&port->pending_buffers, buf);
+    if (buf->gst_buf) {
+      gst_buffer_unref (buf->gst_buf);
+      buf->gst_buf = NULL;
+    }
     gst_omx_component_send_message (comp, NULL);
     goto done;
   }
@@ -1646,7 +1684,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
   g_return_val_if_fail (n == port->port_def.nBufferCountActual,
       OMX_ErrorBadParameter);
 
-  GST_INFO_OBJECT (comp->parent,
+  GST_DEBUG_OBJECT (comp->parent,
       "Allocating %d buffers of size %" G_GSIZE_FORMAT " for %s port %u", n,
       (size_t) port->port_def.nBufferSize, comp->name, (guint) port->index);
 
@@ -1660,6 +1698,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
     buf = g_slice_new0 (GstOMXBuffer);
     buf->port = port;
     buf->used = FALSE;
+    buf->gst_buf = NULL;
     buf->settings_cookie = port->settings_cookie;
     g_ptr_array_add (port->buffers, buf);
 
@@ -1688,7 +1727,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
       goto done;
     }
 
-    GST_DEBUG_OBJECT (comp->parent, "%s: allocated buffer %p (%p)",
+    GST_INFO_OBJECT (comp->parent, "%s: allocated buffer %p (%p)",
         comp->name, buf, buf->omx_buf->pBuffer);
 
     g_assert (buf->omx_buf->pAppPrivate == buf);
@@ -1810,6 +1849,10 @@ gst_omx_port_deallocate_buffers_unlocked (GstOMXPort * port)
      */
     if (buf->omx_buf) {
       g_assert (buf == buf->omx_buf->pAppPrivate);
+      if (buf->gst_buf) {
+        gst_buffer_unref (buf->gst_buf);
+        buf->gst_buf = NULL;
+      }
       buf->omx_buf->pAppPrivate = NULL;
       GST_DEBUG_OBJECT (comp->parent, "%s: deallocating buffer %p (%p)",
           comp->name, buf, buf->omx_buf->pBuffer);
