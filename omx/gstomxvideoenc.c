@@ -1000,10 +1000,8 @@ eos:
 flow_error:
   {
     if (flow_ret == GST_FLOW_EOS) {
-      GST_DEBUG_OBJECT (self, "EOS");
+      GST_INFO_OBJECT (self, "EOS");
 
-      gst_pad_push_event (GST_VIDEO_ENCODER_SRC_PAD (self),
-          gst_event_new_eos ());
       gst_pad_pause_task (GST_VIDEO_ENCODER_SRC_PAD (self));
     } else if (flow_ret == GST_FLOW_NOT_LINKED || flow_ret < GST_FLOW_EOS) {
       GST_ELEMENT_ERROR (self, STREAM, FAILED, ("Internal data stream error."),
