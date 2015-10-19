@@ -71,8 +71,8 @@ static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("video/x-raw, "
         "format = (string) {YUY2, NV12}, "
-        "width = (int) [ 16, 1920 ], "
-        "height = (int) [ 16, 1080 ] , " "framerate = " GST_VIDEO_FPS_RANGE)
+        "width = (int) [ 16, 3840 ], "
+        "height = (int) [ 16, 2160 ] , " "framerate = " GST_VIDEO_FPS_RANGE)
     );
 
 #define MAX_SHIFTS	30
@@ -114,6 +114,7 @@ gst_omx_camera_capt_mode_get_type (void)
   static const GEnumValue capt_mode_types[] = {
     {OMX_VIDEO_CaptureModeSC_NON_MUX, "Non multiplexed", "nmux"},
     {OMX_VIDEO_CaptureModeMC_LINE_MUX, "Line multiplexed ", "lmux"},
+    {OMX_VIDEO_CaptureModeSC_DISCRETESYNC_ACTVID_VSYNC, "Discrete sync", "dsync"},
     {0, NULL, NULL}
   };
 
