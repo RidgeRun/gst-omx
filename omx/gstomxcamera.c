@@ -213,7 +213,7 @@ gst_omx_camera_class_init (GstOMXCameraClass * klass)
           GST_OMX_CAMERA_CAPT_MODE_TYPE, PROP_CAPT_MODE_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-  g_object_class_install_property (gobject_class, PROP_CAPT_MODE,
+  g_object_class_install_property (gobject_class, PROP_VIP_MODE,
       g_param_spec_enum ("vip-mode", "VIP mode",
           "VIP port split configuration",
           GST_OMX_CAMERA_VIP_MODE_TYPE, PROP_VIP_MODE_DEFAULT,
