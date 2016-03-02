@@ -77,6 +77,8 @@ struct _GstOMXBufferPool
   gboolean allocating;
   gboolean deactivated;
   gint current_buffer_index;
+  GCond acquired_cond;
+  GMutex acquired_mutex;
 
   GstOMXBufferPoolPrivate *priv;
 };

@@ -476,15 +476,27 @@ gst_omx_buffer_pool_acquire_buffer (GstBufferPool * bpool,
   GstFlowReturn ret = GST_FLOW_ERROR;
   GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (bpool);
   GstOMXBufferPoolPrivate *priv = pool->priv;
+  gboolean acquired = FALSE;
+  GTimeVal wait_end;
 
   if (!priv->component) {
-    *buffer = gst_atomic_queue_pop (priv->queue);
-    if (G_LIKELY (*buffer)) {
-      ret = GST_FLOW_OK;
-      GST_LOG_OBJECT (pool, "acquired buffer %p", *buffer);
-    } else {
-      ret = GST_FLOW_ERROR;
-      GST_WARNING_OBJECT (pool, "no more buffers");
+    while (!acquired) {
+      *buffer = gst_atomic_queue_pop (priv->queue);
+      if (G_LIKELY (*buffer)) {
+        ret = GST_FLOW_OK;
+        GST_LOG_OBJECT (pool, "acquired buffer %p", *buffer);
+        acquired = TRUE;
+      } else {
+        g_get_current_time (&wait_end);
+        g_time_val_add (&wait_end, 10);
+        ret = GST_FLOW_ERROR;
+        GST_WARNING_OBJECT (pool, "no more buffers");
+        /* Wait until a new buffer is released or timeout expired */
+        g_mutex_lock (&(pool->acquired_mutex));
+        g_cond_timed_wait (&(pool->acquired_cond), &(pool->acquired_mutex),
+            &wait_end);
+        g_mutex_unlock (&(pool->acquired_mutex));
+      }
     }
     goto done;
   }
@@ -524,13 +536,20 @@ gst_omx_buffer_pool_release_buffer (GstBufferPool * bpool, GstBuffer * buffer)
 {
   GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (bpool);
   GstOMXBufferPoolPrivate *priv = pool->priv;
+  GstMapInfo info;
 
   OMX_ERRORTYPE err;
   GstOMXBuffer *omx_buf;
-  GST_LOG_OBJECT (pool, "realeasing buffer %p", buffer);
+
+  gst_buffer_map (buffer, &info, GST_MAP_READ);
+  GST_LOG_OBJECT (pool, "releasing buffer %p with data %p", buffer, info.data);
+  gst_buffer_unmap (buffer, &info);
 
   if (!priv->component) {
+    g_mutex_lock (&(pool->acquired_mutex));
     gst_atomic_queue_push (priv->queue, buffer);
+    g_cond_broadcast (&(pool->acquired_cond));
+    g_mutex_unlock (&(pool->acquired_mutex));
     return;
   }
 
@@ -650,7 +669,8 @@ gst_omx_buffer_pool_new (GstElement * element, GstOMXComponent * component,
   GstOMXBufferPoolPrivate *priv;
 
   pool = g_object_new (gst_omx_buffer_pool_get_type (), NULL);
-  GST_DEBUG_OBJECT (pool, "Created a new OMX buffer pool %p", pool);
+  GST_DEBUG_OBJECT (pool, "Created a new OMX buffer pool %p in buffer pool %p",
+      pool, GST_BUFFER_POOL (pool));
   pool->element = gst_object_ref (element);
   pool->current_buffer_index = 0;
 
