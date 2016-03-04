@@ -706,6 +706,8 @@ enum
 #define GST_OMX_VIDEO_DEC_OUTPUT_BUFFERS_DEFAULT 6
 #define GST_OMX_VIDEO_DEC_INPUT_BUFFERS_DEFAULT 4
 
+#define VERTICAL_PADDING 84
+
 /* class initialization */
 
 #define DEBUG_INIT \
@@ -1280,7 +1282,8 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self,
         if (i == 1)
           src +=
               port_def->format.video.nSliceHeight *
-              port_def->format.video.nStride;
+              port_def->format.video.nStride +
+              VERTICAL_PADDING * port_def->format.video.nStride;
 
         dest = GST_VIDEO_FRAME_COMP_DATA (&frame, i);
         height = GST_VIDEO_FRAME_COMP_HEIGHT (&frame, i);
