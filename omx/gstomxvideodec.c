@@ -2563,6 +2563,11 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
 
   GST_DEBUG_OBJECT (self, "Setting new caps %" GST_PTR_FORMAT, state->caps);
 
+  if (gst_omx_video_dec_reset (decoder, TRUE))
+    GST_DEBUG_OBJECT (self, "Decoder reset");
+  else
+    GST_ERROR_OBJECT (self, "Failed to reset decoder");
+
   gst_omx_port_get_port_definition (self->dec_in_port, &port_def);
 
   /* Check if the caps change is a real format change or if only irrelevant
