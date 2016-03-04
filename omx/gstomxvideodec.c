@@ -661,6 +661,11 @@ buffer_identification_free (BufferIdentification * id)
 
 /* prototypes */
 static void gst_omx_video_dec_finalize (GObject * object);
+static void gst_omx_video_dec_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec);
+static void gst_omx_video_dec_get_property (GObject * object, guint prop_id,
+    GValue * value, GParamSpec * pspec);
+
 
 static GstStateChangeReturn
 gst_omx_video_dec_change_state (GstElement * element,
@@ -690,8 +695,13 @@ static OMX_ERRORTYPE gst_omx_video_dec_deallocate_output_buffers (GstOMXVideoDec
 
 enum
 {
-  PROP_0
+  PROP_0,
+  PROP_OUTPUT_BUFFERS,
+  PROP_INPUT_BUFFERS
 };
+
+#define GST_OMX_VIDEO_DEC_OUTPUT_BUFFERS_DEFAULT 6
+#define GST_OMX_VIDEO_DEC_INPUT_BUFFERS_DEFAULT 4
 
 /* class initialization */
 
@@ -711,6 +721,18 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
   GstVideoDecoderClass *video_decoder_class = GST_VIDEO_DECODER_CLASS (klass);
 
   gobject_class->finalize = gst_omx_video_dec_finalize;
+  gobject_class->set_property = gst_omx_video_dec_set_property;
+  gobject_class->get_property = gst_omx_video_dec_get_property;
+
+  g_object_class_install_property (gobject_class, PROP_OUTPUT_BUFFERS,
+      g_param_spec_uint ("output-buffers", "Output buffers",
+          "The amount of OMX output buffers",
+          1, 16, GST_OMX_VIDEO_DEC_OUTPUT_BUFFERS_DEFAULT, G_PARAM_READWRITE));
+
+  g_object_class_install_property (gobject_class, PROP_INPUT_BUFFERS,
+      g_param_spec_uint ("input-buffers", "Input buffers",
+          "The amount of OMX input buffers",
+          1, 16, GST_OMX_VIDEO_DEC_INPUT_BUFFERS_DEFAULT, G_PARAM_READWRITE));
 
   element_class->change_state =
       GST_DEBUG_FUNCPTR (gst_omx_video_dec_change_state);
@@ -737,6 +759,9 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
 static void
 gst_omx_video_dec_init (GstOMXVideoDec * self)
 {
+  self->output_buffers = GST_OMX_VIDEO_DEC_OUTPUT_BUFFERS_DEFAULT;
+  self->input_buffers = GST_OMX_VIDEO_DEC_INPUT_BUFFERS_DEFAULT;
+
   gst_video_decoder_set_packetized (GST_VIDEO_DECODER (self), TRUE);
 
   g_mutex_init (&self->drain_lock);
@@ -938,6 +963,45 @@ gst_omx_video_dec_finalize (GObject * object)
 
   G_OBJECT_CLASS (gst_omx_video_dec_parent_class)->finalize (object);
 }
+
+static void
+gst_omx_video_dec_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec)
+{
+  GstOMXVideoDec *self = GST_OMX_VIDEO_DEC (object);
+
+  switch (prop_id) {
+    case PROP_OUTPUT_BUFFERS:
+      self->output_buffers = g_value_get_uint (value);
+      break;
+    case PROP_INPUT_BUFFERS:
+      self->input_buffers = g_value_get_uint (value);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
+static void
+gst_omx_video_dec_get_property (GObject * object, guint prop_id, GValue * value,
+    GParamSpec * pspec)
+{
+  GstOMXVideoDec *self = GST_OMX_VIDEO_DEC (object);
+
+  switch (prop_id) {
+    case PROP_OUTPUT_BUFFERS:
+      g_value_set_uint (value, self->output_buffers);
+      break;
+    case PROP_INPUT_BUFFERS:
+      g_value_set_uint (value, self->input_buffers);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
 
 static GstStateChangeReturn
 gst_omx_video_dec_change_state (GstElement * element, GstStateChange transition)
@@ -2636,6 +2700,7 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
 
   GST_DEBUG_OBJECT (self, "Setting inport port definition");
 
+  port_def.nBufferCountActual = self->input_buffers;
   if (gst_omx_port_update_port_definition (self->dec_in_port,
           &port_def) != OMX_ErrorNone)
     return FALSE;

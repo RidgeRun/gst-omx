@@ -76,6 +76,11 @@ struct _GstOMXVideoDec
 
   /* TRUE if upstream is EOS */
   gboolean eos;
+  
+  /* Control inport and outport buffers */
+  guint output_buffers;
+  guint input_buffers;
+
 
   GstFlowReturn downstream_flow_ret;
 #ifdef USE_OMX_TARGET_RPI
