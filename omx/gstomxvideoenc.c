@@ -1744,7 +1744,7 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
   GstOMXAcquireBufferReturn acq_ret = GST_OMX_ACQUIRE_BUFFER_ERROR;
   GstOMXVideoEnc *self;
   GstOMXPort *port;
-  GstOMXBuffer *buf;
+  GstOMXBuffer *buf = NULL;
   OMX_ERRORTYPE err;
   GstOMXMemory *omxmem;
 
@@ -2020,7 +2020,7 @@ static GstFlowReturn
 gst_omx_video_enc_drain (GstOMXVideoEnc * self, gboolean at_eos)
 {
   GstOMXVideoEncClass *klass;
-  GstOMXBuffer *buf;
+  GstOMXBuffer *buf = NULL;
   GstOMXAcquireBufferReturn acq_ret;
   OMX_ERRORTYPE err;
 
