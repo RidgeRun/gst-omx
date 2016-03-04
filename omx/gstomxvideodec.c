@@ -693,6 +693,9 @@ static OMX_ERRORTYPE gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec *
 static OMX_ERRORTYPE gst_omx_video_dec_deallocate_output_buffers (GstOMXVideoDec
     * self);
 
+static gboolean gst_omx_video_dec_component_init (GstOMXVideoDec * self,
+    GList * buffers);
+
 enum
 {
   PROP_0,
@@ -2735,7 +2738,7 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
   } else {
     if (!gst_omx_video_dec_negotiate (self))
       GST_LOG_OBJECT (self, "Negotiation failed, will get output format later");
-
+#if 0
     /* Disable output port */
     if (gst_omx_port_set_enabled (self->dec_out_port, FALSE) != OMX_ErrorNone)
       return FALSE;
@@ -2762,8 +2765,9 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
     if (gst_omx_component_get_state (self->dec,
             GST_CLOCK_TIME_NONE) != OMX_StateExecuting)
       return FALSE;
+#endif
   }
-
+#if 0
   /* Unset flushing to allow ports to accept data again */
   gst_omx_port_set_flushing (self->dec_in_port, 5 * GST_SECOND, FALSE);
   gst_omx_port_set_flushing (self->dec_out_port, 5 * GST_SECOND, FALSE);
@@ -2781,7 +2785,7 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
   self->downstream_flow_ret = GST_FLOW_OK;
   gst_pad_start_task (GST_VIDEO_DECODER_SRC_PAD (self),
       (GstTaskFunction) gst_omx_video_dec_loop, decoder, NULL);
-
+#endif
   return TRUE;
 }
 
@@ -2829,6 +2833,82 @@ gst_omx_video_dec_reset (GstVideoDecoder * decoder, gboolean hard)
       (GstTaskFunction) gst_omx_video_dec_loop, decoder, NULL);
 
   GST_DEBUG_OBJECT (self, "Reset decoder");
+
+  return TRUE;
+}
+
+static gboolean
+gst_omx_video_dec_component_init (GstOMXVideoDec * self, GList * buffers)
+{
+  gboolean have_output_buffers = FALSE;
+  GstVideoInfo *info;
+  OMX_PARAM_PORTDEFINITIONTYPE port_def;
+
+  g_return_val_if_fail (self->input_state, FALSE);
+
+  info = &self->input_state->info;
+
+  GST_INFO_OBJECT (self, "Enabling buffers");
+
+  if (gst_omx_port_set_enabled (self->dec_out_port, TRUE) != OMX_ErrorNone)
+    return FALSE;
+
+  if (gst_omx_port_wait_enabled (self->dec_out_port,
+          1 * GST_SECOND) != OMX_ErrorNone)
+    return FALSE;
+
+  if (gst_omx_port_set_enabled (self->dec_in_port, TRUE) != OMX_ErrorNone)
+    return FALSE;
+
+  if (gst_omx_port_wait_enabled (self->dec_in_port,
+          1 * GST_SECOND) != OMX_ErrorNone)
+    return FALSE;
+
+  GST_INFO_OBJECT (self, "Changing state to Idle");
+  if (gst_omx_component_set_state (self->dec, OMX_StateIdle) != OMX_ErrorNone)
+    return FALSE;
+
+  /* Need to allocate buffers to reach Idle state */
+  if (!buffers) {
+    if (gst_omx_port_allocate_buffers (self->dec_in_port) != OMX_ErrorNone)
+      return FALSE;
+  } else {
+    if (gst_omx_port_use_buffers (self->dec_in_port, buffers) != OMX_ErrorNone) {
+      return FALSE;
+    }
+  }
+  /* If the output port is already configured with the new format we can
+   * allocate buffers here already */
+
+  if (gst_omx_port_allocate_buffers (self->dec_out_port) != OMX_ErrorNone)
+    return FALSE;
+  have_output_buffers = TRUE;
+
+  if (gst_omx_component_get_state (self->dec,
+          GST_CLOCK_TIME_NONE) != OMX_StateIdle)
+    return FALSE;
+
+  GST_INFO_OBJECT (self, "Changing state to Executing");
+  if (gst_omx_component_set_state (self->dec,
+          OMX_StateExecuting) != OMX_ErrorNone)
+    return FALSE;
+
+  if (gst_omx_component_get_state (self->dec,
+          GST_CLOCK_TIME_NONE) != OMX_StateExecuting)
+    return FALSE;
+
+  if (have_output_buffers) {
+    if (gst_omx_port_populate (self->dec_out_port) != OMX_ErrorNone)
+      return FALSE;
+    if (gst_omx_port_mark_reconfigured (self->dec_out_port) != OMX_ErrorNone)
+      return FALSE;
+  }
+
+  /* Start the srcpad loop again */
+  GST_INFO_OBJECT (self, "Starting out pad task");
+  self->downstream_flow_ret = GST_FLOW_OK;
+  gst_pad_start_task (GST_VIDEO_DECODER_SRC_PAD (self),
+      (GstTaskFunction) gst_omx_video_dec_loop, self, NULL);
 
   return TRUE;
 }
@@ -2883,6 +2963,10 @@ gst_omx_video_dec_handle_frame (GstVideoDecoder * decoder,
     }
   }
 
+  if (!self->started) {
+    if (!gst_omx_video_dec_component_init (self, NULL))
+      goto init_error;
+  }
   port = self->dec_in_port;
 
   size = gst_buffer_get_size (frame->input_buffer);
@@ -3060,6 +3144,14 @@ gst_omx_video_dec_handle_frame (GstVideoDecoder * decoder,
   GST_DEBUG_OBJECT (self, "Passed frame to component");
 
   return self->downstream_flow_ret;
+
+init_error:
+  {
+    GST_ELEMENT_ERROR (self, LIBRARY, SETTINGS, (NULL),
+        ("Unable to initialize OMX component"));
+    gst_video_codec_frame_unref (frame);
+    return GST_FLOW_ERROR;
+  }
 
 full_buffer:
   {
