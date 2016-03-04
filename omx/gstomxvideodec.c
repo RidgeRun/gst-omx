@@ -2841,7 +2841,7 @@ gst_omx_video_dec_handle_frame (GstVideoDecoder * decoder,
   GstOMXVideoDec *self;
   GstOMXVideoDecClass *klass;
   GstOMXPort *port;
-  GstOMXBuffer *buf;
+  GstOMXBuffer *buf = NULL;
   GstBuffer *codec_data = NULL;
   guint offset = 0, size;
   GstClockTime timestamp, duration;
