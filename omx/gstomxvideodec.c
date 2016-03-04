@@ -2732,17 +2732,41 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
           &port_def) != OMX_ErrorNone)
     return FALSE;
 
+  /* Outport configuration */
+  gst_omx_port_get_port_definition (self->dec_out_port, &port_def);
+
+  port_def.format.video.nFrameHeight = info->height;
+  port_def.format.video.nSliceHeight = info->height;
+  port_def.format.video.nFrameWidth = info->width;
+  port_def.nBufferAlignment = 0;
+  port_def.format.video.nStride = GST_ROUND_UP_4 (info->width);
+  port_def.format.video.eColorFormat = OMX_COLOR_FormatYUV420PackedSemiPlanar;
+  port_def.nBufferSize =
+      (port_def.format.video.nStride * port_def.format.video.nFrameHeight) +
+      (port_def.format.video.nStride *
+      ((port_def.format.video.nFrameHeight + 1) / 2));
+
+  if (info->fps_n == 0) {
+    port_def.format.video.xFramerate = 0;
+  } else {
+    if (!(klass->cdata.hacks & GST_OMX_HACK_VIDEO_FRAMERATE_INTEGER))
+      port_def.format.video.xFramerate = (info->fps_n << 16) / (info->fps_d);
+    else
+      port_def.format.video.xFramerate = (info->fps_n) / (info->fps_d);
+  }
+
+  port_def.nBufferCountActual = self->output_buffers;
+  GST_DEBUG_OBJECT (self, "Updating outport port definition");
+  if (gst_omx_port_update_port_definition (self->dec_out_port,
+          &port_def) != OMX_ErrorNone)
+    return FALSE;
+
   if (klass->set_format) {
     if (!klass->set_format (self, self->dec_in_port, state)) {
       GST_ERROR_OBJECT (self, "Subclass failed to set the new format");
       return FALSE;
     }
   }
-
-  GST_DEBUG_OBJECT (self, "Updating outport port definition");
-  if (gst_omx_port_update_port_definition (self->dec_out_port,
-          NULL) != OMX_ErrorNone)
-    return FALSE;
 
   gst_buffer_replace (&self->codec_data, state->codec_data);
   self->input_state = gst_video_codec_state_ref (state);
