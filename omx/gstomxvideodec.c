@@ -1876,6 +1876,11 @@ gst_omx_video_dec_reconfigure_output_port (GstOMXVideoDec * self)
           port_def.format.video.eColorFormat);
       format = GST_VIDEO_FORMAT_NV12;
       break;
+    case OMX_COLOR_FormatYUV420PackedSemiPlanar:
+      GST_INFO_OBJECT (self, "Output is NV12 packed (%d)",
+          port_def.format.video.eColorFormat);
+      format = GST_VIDEO_FORMAT_NV12;
+      break;
     default:
       GST_ERROR_OBJECT (self, "Unsupported color format: %d",
           port_def.format.video.eColorFormat);
@@ -2002,6 +2007,11 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
           break;
         case OMX_COLOR_FormatYUV420SemiPlanar:
           GST_DEBUG_OBJECT (self, "Output is NV12 (%d)",
+              port_def.format.video.eColorFormat);
+          format = GST_VIDEO_FORMAT_NV12;
+          break;
+        case OMX_COLOR_FormatYUV420PackedSemiPlanar:
+          GST_INFO_OBJECT (self, "Output is NV12 packed(%d)",
               port_def.format.video.eColorFormat);
           format = GST_VIDEO_FORMAT_NV12;
           break;
@@ -2436,6 +2446,15 @@ gst_omx_video_dec_get_supported_colorformats (GstOMXVideoDec * self)
           m->type = param.eColorFormat;
           negotiation_map = g_list_append (negotiation_map, m);
           GST_DEBUG_OBJECT (self, "Component supports NV12 (%d) at index %u",
+              param.eColorFormat, (guint) param.nIndex);
+          break;
+        case OMX_COLOR_FormatYUV420PackedSemiPlanar:
+          m = g_slice_new (VideoNegotiationMap);
+          m->format = GST_VIDEO_FORMAT_NV12;
+          m->type = param.eColorFormat;
+          negotiation_map = g_list_append (negotiation_map, m);
+          GST_DEBUG_OBJECT (self,
+              "Component supports NV12 packed (%d) at index %u",
               param.eColorFormat, (guint) param.nIndex);
           break;
         default:
