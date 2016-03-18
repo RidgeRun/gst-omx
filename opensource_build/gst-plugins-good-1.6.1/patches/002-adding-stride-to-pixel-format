@@ -1,0 +1,36 @@
+Index: gst-plugins-good-1.6.1/src/sys/v4l2/gstv4l2object.c
+===================================================================
+--- gst-plugins-good-1.6.1.orig/src/sys/v4l2/gstv4l2object.c	2016-03-02 14:46:13.644320900 -0600
++++ gst-plugins-good-1.6.1/src/sys/v4l2/gstv4l2object.c	2016-03-02 14:47:08.592319958 -0600
+@@ -1890,6 +1890,7 @@
+   fmt.fmt.pix.height = height;
+   fmt.fmt.pix.pixelformat = pixelformat;
+   fmt.fmt.pix.field = V4L2_FIELD_NONE;
++  fmt.fmt.pix.bytesperline = GST_ROUND_UP_4 (width);
+ 
+   if (gst_v4l2_object_try_fmt (v4l2object, &fmt) == 0 &&
+       gst_v4l2_object_get_interlace_mode (fmt.fmt.pix.field, &interlace_mode)) {
+@@ -1906,6 +1907,7 @@
+   fmt.fmt.pix.height = height;
+   fmt.fmt.pix.pixelformat = pixelformat;
+   fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
++  fmt.fmt.pix.bytesperline = GST_ROUND_UP_4 (width);
+ 
+   if (gst_v4l2_object_try_fmt (v4l2object, &fmt) == 0 &&
+       gst_v4l2_object_get_interlace_mode (fmt.fmt.pix.field, &interlace_mode) &&
+@@ -1934,6 +1936,7 @@
+   fmt.fmt.pix.width = width;
+   fmt.fmt.pix.height = height;
+   fmt.fmt.pix.pixelformat = pixelformat;
++  fmt.fmt.pix.bytesperline = GST_ROUND_UP_4 (width);
+ 
+   if (gst_v4l2_object_try_fmt (v4l2object, &fmt) == 0) {
+     enum v4l2_colorspace colorspace;
+@@ -2494,6 +2497,7 @@
+   fmt.fmt.pix.height = *height;
+   fmt.fmt.pix.pixelformat = pixelformat;
+   fmt.fmt.pix.field = V4L2_FIELD_ANY;
++  fmt.fmt.pix.bytesperline = GST_ROUND_UP_4 (*width);
+ 
+   if (gst_v4l2_object_try_fmt (v4l2object, &fmt) < 0)
+     goto error;

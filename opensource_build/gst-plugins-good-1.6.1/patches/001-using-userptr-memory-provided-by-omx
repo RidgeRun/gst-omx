@@ -1,0 +1,196 @@
+Index: gst-plugins-good-1.6.1/src/sys/v4l2/gstv4l2allocator.c
+===================================================================
+--- gst-plugins-good-1.6.1.orig/src/sys/v4l2/gstv4l2allocator.c	2016-03-02 14:42:44.168324490 -0600
++++ gst-plugins-good-1.6.1/src/sys/v4l2/gstv4l2allocator.c	2016-03-02 14:42:44.164324490 -0600
+@@ -337,6 +337,97 @@
+   return NULL;
+ }
+ 
++static GstV4l2MemoryGroup *
++gst_v4l2_memory_group_new_userptr (GstV4l2Allocator * allocator, guint32 index)
++{
++  gint video_fd = allocator->video_fd;
++  guint32 memory = allocator->memory;
++  struct v4l2_format *format = &allocator->format;
++  GstV4l2MemoryGroup *group;
++  gsize img_size, buf_size;
++  GstBuffer *buf;
++  gsize size;
++  GstMapInfo info;
++
++  group = g_slice_new0 (GstV4l2MemoryGroup);
++
++  group->buffer.type = format->type;
++  group->buffer.index = index;
++  group->buffer.memory = memory;
++
++  if (V4L2_TYPE_IS_MULTIPLANAR (format->type)) {
++    group->n_mem = group->buffer.length = format->fmt.pix_mp.num_planes;
++    group->buffer.m.planes = group->planes;
++  } else {
++    GST_INFO_OBJECT (allocator, "Format is not multiplanar");
++    group->n_mem = 1;
++  }
++
++  size = allocator->format.fmt.pix_mp.plane_fmt[0].sizeimage;
++
++  buf = gst_buffer_new_allocate (NULL, size, NULL);
++
++  gst_buffer_map (buf, &info, GST_MAP_WRITE);
++
++  group->buffer.m.userptr = (unsigned long) info.data;
++  group->buffer.length = (guint32) info.size;
++
++  GST_DEBUG_OBJECT (allocator, "Allocate one buffer %p of size %" G_GSIZE_FORMAT,
++      group->buffer.m.userptr, info.size);
++  gst_buffer_unmap (buf, &info);
++
++
++  /* Check that provided size matches the format we have negotiation. Failing
++   * there usually means a driver of libv4l bug. */
++  if (V4L2_TYPE_IS_MULTIPLANAR (allocator->type)) {
++    gint i;
++
++    for (i = 0; i < group->n_mem; i++) {
++      img_size = allocator->format.fmt.pix_mp.plane_fmt[i].sizeimage;
++      buf_size = group->planes[i].length;
++      if (buf_size < img_size)
++        goto buffer_too_short;
++    }
++  } else {
++    img_size = allocator->format.fmt.pix.sizeimage;
++    buf_size = group->buffer.length;
++    if (buf_size < img_size)
++      goto buffer_too_short;
++  }
++
++  /* We save non planar buffer information into the multi-planar plane array
++   * to avoid duplicating the code later */
++  if (!V4L2_TYPE_IS_MULTIPLANAR (format->type)) {
++    GST_INFO_OBJECT (allocator, "Set planes info with group info");
++    group->planes[0].bytesused = group->buffer.bytesused;
++    group->planes[0].length = group->buffer.length;
++    g_assert (sizeof (group->planes[0].m) == sizeof (group->buffer.m));
++    memcpy (&group->planes[0].m, &group->buffer.m, sizeof (group->buffer.m));
++  }
++
++  GST_LOG_OBJECT (allocator, "Got %s buffer", memory_type_to_str (memory));
++  GST_LOG_OBJECT (allocator, "  index:     %u", group->buffer.index);
++  GST_LOG_OBJECT (allocator, "  type:      %d", group->buffer.type);
++  GST_LOG_OBJECT (allocator, "  flags:     %08x", group->buffer.flags);
++  GST_LOG_OBJECT (allocator, "  field:     %d", group->buffer.field);
++  GST_LOG_OBJECT (allocator, "  memory:    %d", group->buffer.memory);
++  GST_LOG_OBJECT (allocator, "  planes:    %d", group->n_mem);
++
++  return group;
++
++buffer_too_short:
++  {
++    GST_ERROR ("buffer size %" G_GSIZE_FORMAT
++        " is smaller then negotiated size %" G_GSIZE_FORMAT
++        ", this is usually the result of a bug in the v4l2 driver or libv4l.",
++        buf_size, img_size);
++    goto failed;
++  }
++failed:
++  gst_v4l2_memory_group_free (group);
++  return NULL;
++}
++
+ 
+ /*************************************/
+ /* GstV4lAllocator implementation    */
+@@ -646,10 +737,12 @@
+   allocator->type = format->type;
+   allocator->format = *format;
+ 
++  /* Disable allocator probes because it leaves the device busy */
++#if 0
+   flags |= GST_V4L2_ALLOCATOR_PROBE (allocator, MMAP);
+   flags |= GST_V4L2_ALLOCATOR_PROBE (allocator, USERPTR);
+   flags |= GST_V4L2_ALLOCATOR_PROBE (allocator, DMABUF);
+-
++#endif
+ 
+   if (flags == 0) {
+     /* Drivers not ported from videobuf to videbuf2 don't allow freeing buffers
+@@ -711,7 +804,12 @@
+ 
+   /* Create memory groups */
+   for (i = 0; i < allocator->count; i++) {
+-    allocator->groups[i] = gst_v4l2_memory_group_new (allocator, i);
++    if (memory == V4L2_MEMORY_USERPTR)
++      allocator->groups[i] =
++          gst_v4l2_memory_group_new_userptr (allocator, i);
++    else
++      allocator->groups[i] = gst_v4l2_memory_group_new (allocator, i);
++
+     if (allocator->groups[i] == NULL)
+       goto error;
+ 
+@@ -1252,8 +1350,8 @@
+     goto done;
+   }
+ 
+-  GST_LOG_OBJECT (allocator, "queued buffer %i (flags 0x%X)",
+-      group->buffer.index, group->buffer.flags);
++  GST_LOG_OBJECT (allocator, "queued buffer %i (flags 0x%X) with data %p",
++		  group->buffer.index, group->buffer.flags, group->buffer.m.userptr);
+ 
+   if (!IS_QUEUED (group->buffer)) {
+     GST_DEBUG_OBJECT (allocator,
+@@ -1302,8 +1400,8 @@
+ 
+   group->buffer = buffer;
+ 
+-  GST_LOG_OBJECT (allocator, "dequeued buffer %i (flags 0x%X)", buffer.index,
+-      buffer.flags);
++  GST_LOG_OBJECT (allocator, "dequeued buffer %i (flags 0x%X) with data %p", buffer.index,
++		  buffer.flags, group->buffer.m.userptr);
+ 
+   if (IS_QUEUED (group->buffer)) {
+     GST_DEBUG_OBJECT (allocator,
+Index: gst-plugins-good-1.6.1/src/sys/v4l2/gstv4l2bufferpool.c
+===================================================================
+--- gst-plugins-good-1.6.1.orig/src/sys/v4l2/gstv4l2bufferpool.c	2016-03-02 14:42:44.168324490 -0600
++++ gst-plugins-good-1.6.1/src/sys/v4l2/gstv4l2bufferpool.c	2016-03-02 14:45:21.772321789 -0600
+@@ -892,11 +892,13 @@
+ 
+       pool->buffers[i] = NULL;
+ 
++      /* Don't release buffers to the pool when it is stopping  */
++#if 0
+       if (V4L2_TYPE_IS_OUTPUT (pool->obj->type))
+         gst_v4l2_buffer_pool_release_buffer (bpool, buffer);
+       else                      /* Don't re-enqueue capture buffer on stop */
+         pclass->release_buffer (bpool, buffer);
+-
++#endif
+       g_atomic_int_add (&pool->num_queued, -1);
+     }
+   }
+@@ -1143,8 +1145,11 @@
+   GstV4l2MemoryGroup *group;
+   gint i;
+ 
++  /* Disable polling in device  */
++#if 0
+   if ((res = gst_v4l2_buffer_pool_poll (pool)) != GST_FLOW_OK)
+     goto poll_failed;
++#endif
+ 
+   GST_LOG_OBJECT (pool, "dequeueing a buffer");
+ 
+Index: gst-plugins-good-1.6.1/src/sys/v4l2/gstv4l2object.c
+===================================================================
+--- gst-plugins-good-1.6.1.orig/src/sys/v4l2/gstv4l2object.c	2016-03-02 14:42:44.168324490 -0600
++++ gst-plugins-good-1.6.1/src/sys/v4l2/gstv4l2object.c	2016-03-02 14:45:59.000000000 -0600
+@@ -3725,7 +3725,7 @@
+ 
+     /* To import we need the other pool to hold at least own_min */
+     if (obj->pool == pool)
+-      min += own_min;
++      min = MAX (min, own_min);
+   }
+ 
+   /* Request a bigger max, if one was suggested but it's too small */
