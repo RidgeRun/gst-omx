@@ -49,6 +49,7 @@
 #include "gstomxh263enc.h"
 #include "gstomxaacenc.h"
 #include "gstomxscaler.h"
+#include "gstomxmdeiscaler.h"
 #include "gstomxcamera.h"
 #include "gstomxbufferalloc.h"
 
@@ -2379,7 +2380,8 @@ static const GGetTypeFunction types[] = {
   gst_omx_wmv_dec_get_type, gst_omx_mpeg4_video_enc_get_type,
   gst_omx_h264_enc_get_type, gst_omx_h263_enc_get_type,
   gst_omx_aac_enc_get_type, gst_omx_mjpeg_dec_get_type,
-  gst_omx_scaler_get_type, gst_omx_jpeg_enc_get_type
+  gst_omx_scaler_get_type, gst_omx_jpeg_enc_get_type,
+  gst_omx_mdeiscaler_get_type
 #ifdef HAVE_VP8
       , gst_omx_vp8_dec_get_type
 #endif

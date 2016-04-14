@@ -32,6 +32,7 @@ libgstomx_la_SOURCES = \
 	gstomxbufferpool.c \
 	gstomxvideofilter.c \
 	gstomxscaler.c \
+	gstomxmdeiscaler.c \
 	gstomxcamera.c
 
 noinst_HEADERS = \
@@ -56,16 +57,20 @@ noinst_HEADERS = \
 	gstomxbufferpool.h \
 	gstomxvideofilter.h \
 	gstomxscaler.h \
+	gstomxmdeiscaler.h \
 	gstomxcamera.h
 
 if !HAVE_EXTERNAL_OMX
 OMX_INCLUDEPATH = -I$(abs_srcdir)/openmax
 endif
 
+SHARED_INCLUDE = -I$(DEVDIR)/proprietary/ezsdk-5_05_02_00/ezsdk/linux-devkit/arm-none-linux-gnueabi/usr/include
+
 libgstomx_la_CFLAGS = \
 	-DGST_USE_UNSTABLE_API=1 \
 	$(OMXCORE_CFLAGS) \
 	$(OMX_INCLUDEPATH) \
+	$(SHARED_INCLUDE) \
 	$(GST_EGL_CFLAGS) \
 	$(GST_PLUGINS_BASE_CFLAGS) \
 	$(GST_BASE_CFLAGS) \
