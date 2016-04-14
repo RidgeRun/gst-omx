@@ -80,7 +80,7 @@ struct _GstOMXVideoFilter
   gboolean always_copy;
   guint output_buffers;
   guint input_buffers;
-  
+
   /*< private > */
   GstOMXVideoFilterPrivate *priv;
 
@@ -90,21 +90,28 @@ struct _GstOMXVideoFilter
 /**
  * GstVideoEncoderClass:
  *
- * @num_outputs:    Indicates the amount of src pads in this element.
- * @transform_caps: Optional.
- *                  Given the pad in this direction and the given
- *                  caps, what caps are allowed on the other pad in this
- *                  element. If the element has multiple outputs the
- *                  corresponding srcpad under analysis is provided.
- * @fixate_caps:    Optional.
- *                  Given the @sinkcaps for the sink pad, fixate
- *                  the caps on the @srcpad. The function takes
- *                  ownership of @srccaps and returns a fixated version of
- *                  @srccaps. @srccaps is not guaranteed to be writable.
- * @set_format:     Optional.
- *                  Notifies subclass of incoming data format. @ininfo
- *                  and @outinfo_list are already been set acording
- *                  to the provided and negotiated caps.
+ * @num_outputs:     Indicates the amount of src pads in this element.
+ * @sink_templ_only: If TRUE, the sink pad template caps will be used
+ *                   in the return from the caps query.
+ *                   If FALSE, the sink pad caps will be determined
+ *                   using gst_omx_video_filter_proxy_get_caps.
+ * @transform_caps:  Optional.
+ *                   Given the pad in this direction and the given
+ *                   caps, what caps are allowed on the other pad in this
+ *                   element. If the element has multiple outputs the
+ *                   corresponding srcpad under analysis is provided.
+ * @fixate_caps:     Optional.
+ *                   Given the @sinkcaps for the sink pad, fixate
+ *                   the caps on the @srcpad. The function takes
+ *                   ownership of @srccaps and returns a fixated version of
+ *                   @srccaps. @srccaps is not guaranteed to be writable.
+ * @set_format:      Optional.
+ *                   Notifies subclass of incoming data format. @ininfo
+ *                   and @outinfo_list are already been set acording
+ *                   to the provided and negotiated caps.
+ * @fixed_src_caps:  Optional.
+ *                   Given the @srcpad, returns fixated caps based on pad
+ *                   template, @incaps and peer intersect.
  */
 struct _GstOMXVideoFilterClass
 {
@@ -112,6 +119,7 @@ struct _GstOMXVideoFilterClass
 
   GstOMXClassData cdata;
   guint num_outputs;
+  gboolean sink_templ_only;
 
   /* virtual methods for subclasses */
   GstCaps *(*transform_caps) (GstOMXVideoFilter * self,
@@ -119,9 +127,11 @@ struct _GstOMXVideoFilterClass
       GstPad * srcpad, GstCaps * caps, GstCaps * filter);
   GstCaps *(*fixate_caps) (GstOMXVideoFilter * self,
       GstPad * srcpad, GstCaps * sinkcaps, GstCaps * srccaps);
-  gboolean  (*set_format) (GstOMXVideoFilter * self,
+    gboolean (*set_format) (GstOMXVideoFilter * self,
       GstCaps * incaps, GstVideoInfo * ininfo, GList * outcaps_list,
       GList * outinfo_list);
+  GstCaps *(*fixed_src_caps) (GstOMXVideoFilter * self, GstCaps * incaps,
+      GstPad * srcpad);
 };
 
 GType gst_omx_video_filter_get_type (void);
