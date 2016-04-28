@@ -385,9 +385,7 @@ gst_omx_video_filter_finish_frame (GstOMXVideoFilter * self, GstPad * srcpad,
   GstOMXVideoFilterPrivate *priv = self->priv;
   GstFlowReturn ret = GST_FLOW_OK;
   GPtrArray *frames;
-  GstOMXPort *port;
 
-  port = (GstOMXPort *) gst_pad_get_element_private (srcpad);
   GST_LOG_OBJECT (self,
       "finish frame fpn %d", frame->presentation_frame_number);
 
@@ -429,15 +427,12 @@ done:
 
   if (frames) {
     g_ptr_array_remove (frames, frame);
-    if (!(port->flushing)) {
-      gst_video_codec_frame_unref (frame);
-    }
+    gst_video_codec_frame_unref (frame);
   }
 
   /* unref because this function takes ownership */
-  if (!(port->flushing)) {
-    gst_video_codec_frame_unref (frame);
-  }
+  gst_video_codec_frame_unref (frame);
+
   GST_OMX_VIDEO_FILTER_STREAM_UNLOCK (self);
 
   return ret;
@@ -470,9 +465,9 @@ gst_omx_video_filter_find_nearest_frame (GstOMXVideoFilter * self, GstPad * pad,
      * them here!
      */
     if (!id)
-      continue;
-
-    timestamp = id->timestamp;
+      timestamp = 0;
+    else
+      timestamp = id->timestamp;
 
     if (timestamp > buf->omx_buf->nTimeStamp)
       diff = timestamp - buf->omx_buf->nTimeStamp;
@@ -520,7 +515,7 @@ gst_omx_video_filter_find_nearest_frame (GstOMXVideoFilter * self, GstPad * pad,
   }
 
   if (finish_frames) {
-    g_warning ("Too old frames, bug in self -- please file a bug");
+    GST_FIXME_OBJECT (self, "Too old frames, bug in self -- please file a bug");
     for (l = finish_frames; l; l = l->next) {
       gst_omx_video_filter_finish_frame (GST_OMX_VIDEO_FILTER (self), pad,
           l->data);
@@ -560,7 +555,7 @@ gst_omx_video_filter_handle_output_frame (GstOMXVideoFilter * self,
   gint idx, n, i;
 
   if (buf->omx_buf->nFilledLen > 0) {
-    GstBuffer *outbuf;
+    GstBuffer *outbuf = NULL;
     GstMapInfo map = GST_MAP_INFO_INIT;
 
     GST_LOG_OBJECT (self, "Handling output data");
@@ -658,7 +653,7 @@ gst_omx_video_filter_output_loop (GstPad * pad)
    * lock and the videocodec stream lock, if ::reset()
    * is called at the wrong time
    */
-  if (port->flushing) {
+  if (gst_omx_port_is_flushing (port)) {
     GST_DEBUG_OBJECT (self, "Flushing");
     gst_omx_port_release_buffer (port, buf);
     goto flushing;
@@ -676,7 +671,7 @@ gst_omx_video_filter_output_loop (GstPad * pad)
   GST_LOG_OBJECT (self, "Finished frame: %s", gst_flow_get_name (flow_ret));
 
   /*Release the buffer to the pool after finish */
-  if ((g_list_length (self->out_port) > 1) && !(port->flushing)) {
+  if (self->always_copy) {
     err = gst_omx_port_release_buffer (port, buf);
     if (err != OMX_ErrorNone)
       goto release_error;
@@ -2385,6 +2380,8 @@ gst_omx_video_filter_chain (GstPad * pad, GstObject * parent, GstBuffer * buf)
   GstFlowReturn ret = GST_FLOW_OK;
   guint64 start, stop;
 
+  GList *framesarray = NULL;
+
   GST_OMX_VIDEO_FILTER_STREAM_LOCK (self);
 
   pts = GST_BUFFER_PTS (buf);
@@ -2404,17 +2401,36 @@ gst_omx_video_filter_chain (GstPad * pad, GstObject * parent, GstBuffer * buf)
 
   /* incoming DTS is not really relevant and does not make sense anyway,
    * so pass along _NONE and maybe come up with something better later on */
-  frame = gst_omx_video_filter_new_frame (self, buf, start,
-      GST_CLOCK_TIME_NONE, stop - start);
 
-  /* Adding the video frame to each src pad pending frames list */
-  g_hash_table_foreach (priv->frames, (GHFunc) add_frame_to_pad_array, frame);
+  /* Adding the video frame to each src pad pending frames list
+   * The frame has to be copied and created one for each srcpad */
+
+  gboolean second = FALSE;
+  for (framesarray = g_hash_table_get_values (priv->frames); framesarray;
+      framesarray = framesarray->next) {
+    frame =
+        gst_omx_video_filter_new_frame (self, buf, start, GST_CLOCK_TIME_NONE,
+        stop - start);
+    GST_DEBUG_OBJECT (self, "New frame: %p with refcount: %i", frame,
+        frame->ref_count);
+
+    if (second || g_hash_table_size (priv->frames) == 1)
+      gst_video_codec_frame_ref (frame);
+
+    g_ptr_array_add ((GPtrArray *) framesarray->data, frame);
+    second = TRUE;
+  }
+
+  if (second)
+    gst_buffer_ref (frame->input_buffer);
 
   /* new data, more finish needed */
   priv->drained = FALSE;
   ret = gst_omx_video_filter_handle_frame (self, frame);
 
   GST_OMX_VIDEO_FILTER_STREAM_UNLOCK (self);
+
+  g_list_free (framesarray);
 
   return ret;
 }
