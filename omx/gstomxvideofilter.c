@@ -2465,11 +2465,6 @@ gst_omx_video_filter_change_state (GstElement * element,
         goto start_failed;
       break;
     case GST_STATE_CHANGE_PAUSED_TO_READY:
-      self->in_port->flushing = TRUE;
-      for (outport = self->out_port; outport; outport = outport->next) {
-        port = self->out_port->data;
-        port->flushing = TRUE;
-      }
       if (self->in_port)
         gst_omx_port_set_flushing (self->in_port, 5 * GST_SECOND, TRUE);
       for (outport = self->out_port; outport; outport = outport->next)
