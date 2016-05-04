@@ -1065,6 +1065,11 @@ gst_omx_video_filter_sink_query (GstPad * pad, GstObject * parent,
       ret = TRUE;
       break;
     }
+    case GST_QUERY_ALLOCATION:
+    {
+      gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
+      break;
+    }
 
     default:
       ret = gst_pad_query_default (pad, parent, query);
