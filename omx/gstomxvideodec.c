@@ -703,7 +703,7 @@ enum
   PROP_INPUT_BUFFERS
 };
 
-#define GST_OMX_VIDEO_DEC_OUTPUT_BUFFERS_DEFAULT 6
+#define GST_OMX_VIDEO_DEC_OUTPUT_BUFFERS_DEFAULT 8
 #define GST_OMX_VIDEO_DEC_INPUT_BUFFERS_DEFAULT 4
 
 #define VERTICAL_PADDING 84
@@ -1350,7 +1350,7 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
     gst_buffer_pool_config_get_allocator (config, &allocator, NULL);
 
     /* Need at least 2 buffers for anything meaningful */
-    min = MAX (MAX (min, port->port_def.nBufferCountMin), 4);
+    min = MAX (MAX (min, self->output_buffers), 4);
     if (max == 0) {
       max = min;
     } else if (max < port->port_def.nBufferCountMin || max < 2) {
@@ -2098,6 +2098,8 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
       gint i, n;
       GstBufferPoolAcquireParams params = { 0, };
 
+      GST_LOG_OBJECT (self, "Using OMX pool");
+
       n = port->buffers->len;
       for (i = 0; i < n; i++) {
         GstOMXBuffer *tmp = g_ptr_array_index (port->buffers, i);
@@ -2569,6 +2571,80 @@ gst_omx_video_dec_negotiate (GstOMXVideoDec * self)
   return (err == OMX_ErrorNone);
 }
 
+static OMX_ERRORTYPE
+gst_omx_video_dec_configure_output_port (GstOMXVideoDec * self)
+{
+  GstOMXPort *port;
+  OMX_ERRORTYPE err;
+  GstVideoCodecState *state;
+  OMX_PARAM_PORTDEFINITIONTYPE port_def;
+  GstVideoFormat format;
+
+  /* At this point the decoder output port is disabled */
+  port = self->dec_out_port;
+
+  /* Update caps */
+  GST_VIDEO_DECODER_STREAM_LOCK (self);
+
+  gst_omx_port_get_port_definition (port, &port_def);
+  g_assert (port_def.format.video.eCompressionFormat == OMX_VIDEO_CodingUnused);
+
+  switch (port_def.format.video.eColorFormat) {
+    case OMX_COLOR_FormatYUV420Planar:
+    case OMX_COLOR_FormatYUV420PackedPlanar:
+      GST_DEBUG_OBJECT (self, "Output is I420 (%d)",
+          port_def.format.video.eColorFormat);
+      format = GST_VIDEO_FORMAT_I420;
+      break;
+    case OMX_COLOR_FormatYUV420SemiPlanar:
+      GST_DEBUG_OBJECT (self, "Output is NV12 (%d)",
+          port_def.format.video.eColorFormat);
+      format = GST_VIDEO_FORMAT_NV12;
+      break;
+    case OMX_COLOR_FormatYUV420PackedSemiPlanar:
+      GST_INFO_OBJECT (self, "Output is NV12 packed (%d)",
+          port_def.format.video.eColorFormat);
+      format = GST_VIDEO_FORMAT_NV12;
+      break;
+    default:
+      GST_ERROR_OBJECT (self, "Unsupported color format: %d",
+          port_def.format.video.eColorFormat);
+      GST_VIDEO_DECODER_STREAM_UNLOCK (self);
+      err = OMX_ErrorUndefined;
+      goto done;
+      break;
+  }
+
+  GST_DEBUG_OBJECT (self,
+      "Setting output state: format %s, width %u, height %u",
+      gst_video_format_to_string (format),
+      (guint) port_def.format.video.nFrameWidth,
+      (guint) port_def.format.video.nFrameHeight);
+
+  state = gst_video_decoder_set_output_state (GST_VIDEO_DECODER (self),
+      format, port_def.format.video.nFrameWidth,
+      port_def.format.video.nFrameHeight, self->input_state);
+
+  if (!gst_video_decoder_negotiate (GST_VIDEO_DECODER (self))) {
+    gst_video_codec_state_unref (state);
+    GST_ERROR_OBJECT (self, "Failed to negotiate");
+    err = OMX_ErrorUndefined;
+    goto done;
+  }
+
+  gst_video_codec_state_unref (state);
+
+  GST_VIDEO_DECODER_STREAM_UNLOCK (self);
+
+  err = gst_omx_video_dec_allocate_output_buffers (self);
+  if (err != OMX_ErrorNone)
+    goto done;
+
+done:
+
+  return err;
+}
+
 static gboolean
 gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
     GstVideoCodecState * state)
@@ -2798,11 +2874,16 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
             1 * GST_SECOND) != OMX_ErrorNone)
       return FALSE;
 
+#endif
+
     if (gst_omx_component_set_state (self->dec, OMX_StateIdle) != OMX_ErrorNone)
       return FALSE;
 
     /* Need to allocate buffers to reach Idle state */
     if (gst_omx_port_allocate_buffers (self->dec_in_port) != OMX_ErrorNone)
+      return FALSE;
+
+    if (gst_omx_video_dec_configure_output_port (self))
       return FALSE;
 
     if (gst_omx_component_get_state (self->dec,
@@ -2816,12 +2897,16 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
     if (gst_omx_component_get_state (self->dec,
             GST_CLOCK_TIME_NONE) != OMX_StateExecuting)
       return FALSE;
-#endif
   }
-#if 0
+
   /* Unset flushing to allow ports to accept data again */
   gst_omx_port_set_flushing (self->dec_in_port, 5 * GST_SECOND, FALSE);
   gst_omx_port_set_flushing (self->dec_out_port, 5 * GST_SECOND, FALSE);
+
+  if (gst_omx_port_populate (self->dec_out_port) != OMX_ErrorNone)
+    return FALSE;
+  if (gst_omx_port_mark_reconfigured (self->dec_out_port) != OMX_ErrorNone)
+    return FALSE;
 
   if (gst_omx_component_get_last_error (self->dec) != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self, "Component in error state: %s (0x%08x)",
@@ -2836,7 +2921,7 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
   self->downstream_flow_ret = GST_FLOW_OK;
   gst_pad_start_task (GST_VIDEO_DECODER_SRC_PAD (self),
       (GstTaskFunction) gst_omx_video_dec_loop, decoder, NULL);
-#endif
+
   return TRUE;
 }
 
@@ -3014,10 +3099,6 @@ gst_omx_video_dec_handle_frame (GstVideoDecoder * decoder,
     }
   }
 
-  if (!self->started) {
-    if (!gst_omx_video_dec_component_init (self, NULL))
-      goto init_error;
-  }
   port = self->dec_in_port;
 
   size = gst_buffer_get_size (frame->input_buffer);
