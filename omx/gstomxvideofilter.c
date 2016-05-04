@@ -2254,6 +2254,12 @@ gst_omx_video_filter_handle_frame (GstOMXVideoFilter * self,
      * _loop() can't call _finish_frame() and we might block forever
      * because no input buffers are released */
     GST_OMX_VIDEO_FILTER_STREAM_UNLOCK (self);
+
+    if (priv->sharing) {
+      omxmem = (GstOMXMemory *) gst_buffer_peek_memory (frame->input_buffer, 0);
+      buf = omxmem->buf;
+    }
+
     acq_ret = gst_omx_port_acquire_buffer (port, &buf);
 
     if (acq_ret == GST_OMX_ACQUIRE_BUFFER_ERROR) {
