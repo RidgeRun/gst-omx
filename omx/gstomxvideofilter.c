@@ -2219,6 +2219,7 @@ static GstFlowReturn
 gst_omx_video_filter_handle_frame (GstOMXVideoFilter * self,
     GstVideoCodecFrame * frame)
 {
+  GstOMXVideoFilterClass *klass = GST_OMX_VIDEO_FILTER_GET_CLASS (self);
   GstOMXVideoFilterPrivate *priv = self->priv;
 
   GstOMXPort *port;
@@ -2235,6 +2236,36 @@ gst_omx_video_filter_handle_frame (GstOMXVideoFilter * self,
   }
 
   if (!priv->started) {
+    OMX_PARAM_PORTDEFINITIONTYPE port_def;
+    GstVideoFrame vframe;
+    guint stride;
+
+    if (!gst_video_frame_map (&vframe, &priv->input_info, frame->input_buffer,
+            GST_MAP_READ))
+      goto invalid_frame;
+
+    stride = GST_VIDEO_FRAME_COMP_STRIDE (&vframe, 0);
+    gst_omx_port_get_port_definition (self->in_port, &port_def);
+
+    if (port_def.format.video.nStride != stride) {
+      guint n;
+
+      for (n = 0; n < GST_VIDEO_INFO_N_COMPONENTS (&priv->input_info); n++)
+        priv->input_info.stride[n] = GST_VIDEO_FRAME_COMP_STRIDE (&vframe, 0);
+
+      port_def.format.video.nStride = stride;
+      GST_INFO_OBJECT (self, "Updating input port stride to %lu",
+          GST_VIDEO_INFO_PLANE_STRIDE (&priv->input_info, 0));
+
+      if (gst_omx_port_update_port_definition (self->in_port,
+              &port_def) != OMX_ErrorNone)
+        goto reconfigure_error;
+
+      if (!klass->set_format (self, NULL, &priv->input_info, NULL,
+              priv->output_info))
+        goto reconfigure_error;
+    }
+
     /* If this buffer has been allocated using the openmax memory management
      * we share the buffers in the pool instead of copy them */
     if (!priv->sharing && gst_buffer_n_memory (frame->input_buffer) == 1
@@ -2325,6 +2356,18 @@ gst_omx_video_filter_handle_frame (GstOMXVideoFilter * self,
 
   return priv->downstream_flow_ret;
 
+invalid_frame:
+  {
+    GST_WARNING_OBJECT (self, "invalid frame received");
+    return gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (self), frame);
+  }
+reconfigure_error:
+  {
+    GST_ELEMENT_ERROR (self, LIBRARY, SETTINGS, (NULL),
+        ("Unable to reconfigure input port"));
+
+    return gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (self), frame);
+  }
 init_error:
   {
     GST_ELEMENT_ERROR (self, LIBRARY, SETTINGS, (NULL),
