@@ -2172,6 +2172,7 @@ gst_omx_video_filter_use_buffers (GstOMXVideoFilter * self,
 {
   GstOMXPort *mem_port;
   OMX_PARAM_PORTDEFINITIONTYPE port_def;
+  GstOMXBuffer *buf;
   GList *buffers = NULL;
   gint i, n;
   gboolean ret;
@@ -2182,7 +2183,8 @@ gst_omx_video_filter_use_buffers (GstOMXVideoFilter * self,
   /* Set actual buffer count to the port */
   gst_omx_port_get_port_definition (self->in_port, &port_def);
   port_def.nBufferCountActual = n;
-
+  buf = g_ptr_array_index (mem_port->buffers, 0);
+  port_def.nBufferSize = buf->omx_buf->nAllocLen;
   GST_DEBUG_OBJECT (self, "Updating input port buffer count to %lu",
       port_def.nBufferCountActual);
   if (gst_omx_port_update_port_definition (self->in_port,
@@ -2192,7 +2194,7 @@ gst_omx_video_filter_use_buffers (GstOMXVideoFilter * self,
   GST_DEBUG_OBJECT (self, "Configuring to use upstream buffers ...");
 
   for (i = 0; i < n; i++) {
-    GstOMXBuffer *buf = g_ptr_array_index (mem_port->buffers, i);
+    buf = g_ptr_array_index (mem_port->buffers, i);
     buffers = g_list_append (buffers, buf->omx_buf->pBuffer);
     GST_LOG_OBJECT (self, "Adding buffer %p to the use list",
         buf->omx_buf->pBuffer);
