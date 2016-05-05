@@ -2331,12 +2331,15 @@ gst_omx_video_filter_handle_frame (GstOMXVideoFilter * self,
             "OMX input buffer %p and self buffer %p doesn't match",
             omxmem->buf->omx_buf->pBuffer, buf->omx_buf->pBuffer);
       }
-    }
-    /* Copy the buffer content in chunks of size as requested
-     * by the port */
-    if (!gst_omx_video_filter_fill_buffer (self, frame->input_buffer, buf)) {
-      gst_omx_port_release_buffer (port, buf);
-      goto buffer_fill_error;
+      buf->omx_buf->nFilledLen = omxmem->buf->omx_buf->nFilledLen;
+      buf->omx_buf->nOffset = omxmem->buf->omx_buf->nOffset;
+    } else {
+      /* Copy the buffer content in chunks of size as requested
+       * by the port */
+      if (!gst_omx_video_filter_fill_buffer (self, frame->input_buffer, buf)) {
+        gst_omx_port_release_buffer (port, buf);
+        goto buffer_fill_error;
+      }
     }
 
     id = g_slice_new0 (BufferIdentification);
