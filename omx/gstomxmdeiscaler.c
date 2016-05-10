@@ -96,7 +96,7 @@ gst_omx_mdeiscaler_class_init (GstOMXMDEIScalerClass * klass)
       GST_DEBUG_FUNCPTR (gst_omx_mdeiscaler_set_format);
   videofilter_class->cdata.default_sink_template_caps = "video/x-raw, "
       "width = (int) [ 16, 1920 ], "
-      "height = (int) [ 16, 1080 ], "
+      "height = (int) [ 16, 1200 ], "
       "framerate=" GST_VIDEO_FPS_RANGE ", " "format = (string) { NV12, YUY2 }";
   gst_element_class_set_static_metadata (element_class,
       "OpenMAX MDEI Video Scaler",
