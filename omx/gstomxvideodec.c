@@ -2811,6 +2811,13 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
           &port_def) != OMX_ErrorNone)
     return FALSE;
 
+  if (klass->set_format) {
+    if (!klass->set_format (self, self->dec_in_port, state)) {
+      GST_ERROR_OBJECT (self, "Subclass failed to set the new format");
+      return FALSE;
+    }
+  }
+
   /* Outport configuration */
   gst_omx_port_get_port_definition (self->dec_out_port, &port_def);
 
@@ -2839,13 +2846,6 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
   if (gst_omx_port_update_port_definition (self->dec_out_port,
           &port_def) != OMX_ErrorNone)
     return FALSE;
-
-  if (klass->set_format) {
-    if (!klass->set_format (self, self->dec_in_port, state)) {
-      GST_ERROR_OBJECT (self, "Subclass failed to set the new format");
-      return FALSE;
-    }
-  }
 
   gst_buffer_replace (&self->codec_data, state->codec_data);
   self->input_state = gst_video_codec_state_ref (state);
