@@ -403,40 +403,40 @@ gst_omx_buffer_pool_alloc_buffer (GstBufferPool * bpool,
     gst_buffer_append_memory (buf, mem);
     g_ptr_array_add (priv->buffers, buf);
 
-    if (priv->add_videometa) {
-      gsize offset[4] = { 0, };
-      gint stride[4] = { 0, };
+    gsize offset[4] = { 0, };
+    gint stride[4] = { 0, };
 
-      switch (priv->video_info.finfo->format) {
-        case GST_VIDEO_FORMAT_I420:
-          offset[0] = 0;
-          stride[0] = priv->port->port_def.format.video.nStride;
-          offset[1] =
-              stride[0] * priv->port->port_def.format.video.nSliceHeight;
-          stride[1] = priv->port->port_def.format.video.nStride / 2;
-          offset[2] =
-              offset[1] +
-              stride[1] * (priv->port->port_def.format.video.nSliceHeight / 2);
-          stride[2] = priv->port->port_def.format.video.nStride / 2;
-          break;
-        case GST_VIDEO_FORMAT_NV12:
-          offset[0] = 0;
-          stride[0] = priv->port->port_def.format.video.nStride;
-          offset[1] =
-              stride[0] * priv->port->port_def.format.video.nSliceHeight;
-          stride[1] = priv->port->port_def.format.video.nStride;
-          break;
-        default:
-          g_assert_not_reached ();
-          break;
-      }
-
-      gst_buffer_add_video_meta_full (buf, GST_VIDEO_FRAME_FLAG_NONE,
-          GST_VIDEO_INFO_FORMAT (&priv->video_info),
-          GST_VIDEO_INFO_WIDTH (&priv->video_info),
-          GST_VIDEO_INFO_HEIGHT (&priv->video_info),
-          GST_VIDEO_INFO_N_PLANES (&priv->video_info), offset, stride);
+    switch (priv->video_info.finfo->format) {
+      case GST_VIDEO_FORMAT_I420:
+        offset[0] = 0;
+        stride[0] = priv->port->port_def.format.video.nStride;
+        offset[1] = stride[0] * priv->port->port_def.format.video.nSliceHeight;
+        stride[1] = priv->port->port_def.format.video.nStride / 2;
+        offset[2] =
+            offset[1] +
+            stride[1] * (priv->port->port_def.format.video.nSliceHeight / 2);
+        stride[2] = priv->port->port_def.format.video.nStride / 2;
+        break;
+      case GST_VIDEO_FORMAT_NV12:
+        offset[0] = 0;
+        stride[0] = priv->port->port_def.format.video.nStride;
+        offset[1] =
+            stride[0] * (priv->port->port_def.format.video.nFrameHeight + 72);
+        stride[1] = priv->port->port_def.format.video.nStride;
+        break;
+      default:
+        g_assert_not_reached ();
+        break;
     }
+
+    GST_INFO_OBJECT (bpool, "Setting videometa");
+
+    gst_buffer_add_video_meta_full (buf, GST_VIDEO_FRAME_FLAG_NONE,
+        GST_VIDEO_INFO_FORMAT (&priv->video_info),
+        GST_VIDEO_INFO_WIDTH (&priv->video_info),
+        GST_VIDEO_INFO_HEIGHT (&priv->video_info),
+        GST_VIDEO_INFO_N_PLANES (&priv->video_info), offset, stride);
+
   }
 
   gst_mini_object_set_qdata (GST_MINI_OBJECT_CAST (buf),
