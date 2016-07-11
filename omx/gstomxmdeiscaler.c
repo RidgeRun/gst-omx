@@ -207,6 +207,7 @@ gst_omx_mdeiscaler_set_format (GstOMXVideoFilter * videofilter,
   OMX_ERRORTYPE err;
   GList *outinfo;
   OMX_PARAM_BUFFER_MEMORYTYPE memory;
+  guint shift = 0;
 
   OMX_CONFIG_SUBSAMPLING_FACTOR subsampling_factor = { 0 };
   GST_OMX_INIT_STRUCT (&subsampling_factor);
@@ -233,10 +234,13 @@ gst_omx_mdeiscaler_set_format (GstOMXVideoFilter * videofilter,
     return FALSE;
   }
 
+  if (videofilter->interlaced)
+    shift = 1;
+
   GST_DEBUG_OBJECT (videofilter, "setting input resolution");
   GST_OMX_INIT_STRUCT (&channel_resolution);
   channel_resolution.Frm0Width = GST_VIDEO_INFO_WIDTH (ininfo);
-  channel_resolution.Frm0Height = GST_VIDEO_INFO_HEIGHT (ininfo);
+  channel_resolution.Frm0Height = GST_VIDEO_INFO_HEIGHT (ininfo) >> shift;
   channel_resolution.Frm0Pitch = GST_VIDEO_INFO_PLANE_STRIDE (ininfo, 0);
   channel_resolution.Frm1Width = 0;
   channel_resolution.Frm1Height = 0;
@@ -244,7 +248,7 @@ gst_omx_mdeiscaler_set_format (GstOMXVideoFilter * videofilter,
   channel_resolution.FrmStartX = 0;
   channel_resolution.FrmStartY = 0;
   channel_resolution.FrmCropWidth = GST_VIDEO_INFO_WIDTH (ininfo);
-  channel_resolution.FrmCropHeight = GST_VIDEO_INFO_HEIGHT (ininfo);
+  channel_resolution.FrmCropHeight = GST_VIDEO_INFO_HEIGHT (ininfo) >> shift;
   channel_resolution.eDir = OMX_DirInput;
   channel_resolution.nChId = 0;
   err = gst_omx_component_set_config (videofilter->comp,
@@ -255,6 +259,8 @@ gst_omx_mdeiscaler_set_format (GstOMXVideoFilter * videofilter,
         gst_omx_error_to_string (err), err);
     return FALSE;
   }
+
+  GST_DEBUG_OBJECT (videofilter, "Setting channel height: %d, width: %d, pitch: %d, cropwidth: %d, cropheight: %d", channel_resolution.Frm0Height, channel_resolution.Frm0Width, channel_resolution.Frm0Pitch, channel_resolution.FrmCropWidth, channel_resolution.FrmCropHeight);
 
   outinfo = outinfo_list;
   GST_DEBUG_OBJECT (videofilter, "setting output resolution");
@@ -300,7 +306,7 @@ gst_omx_mdeiscaler_set_format (GstOMXVideoFilter * videofilter,
   GST_OMX_INIT_STRUCT (&alg_enable);
   alg_enable.nPortIndex = 0;
   alg_enable.nChId = 0;
-  alg_enable.bAlgBypass = 1;
+  alg_enable.bAlgBypass = (videofilter->interlaced)? 0 : 1;
   err = gst_omx_component_set_config (videofilter->comp,
       OMX_TI_IndexConfigAlgEnable, &alg_enable);
   if (err != OMX_ErrorNone) {

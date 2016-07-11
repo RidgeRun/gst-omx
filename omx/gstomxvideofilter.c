@@ -354,6 +354,8 @@ gst_omx_video_filter_init (GstOMXVideoFilter * self,
   self->always_copy = GST_OMX_VIDEO_FILTER_ALWAYS_COPY_DEFAULT;
   self->input_buffers = GST_OMX_VIDEO_FILTER_INPUT_BUFFERS_DEFAULT;
   self->output_buffers = GST_OMX_VIDEO_FILTER_OUTPUT_BUFFERS_DEFAULT;
+  self->interlaced = FALSE;
+  self->bottom = FALSE;
 
   gst_omx_video_filter_reset (self);
 
@@ -1147,7 +1149,7 @@ gst_omx_video_filter_set_format (GstOMXVideoFilter * self, GstCaps * incaps,
   GstVideoInfo *outinfo;
   GstStructure *config;
   GList *outport, *srcinfo, *srccaps, *outpool;
-  gint i;
+  gint i, shift = 0;
 
   GST_DEBUG_OBJECT (self, "Setting new format");
 
@@ -1197,8 +1199,13 @@ gst_omx_video_filter_set_format (GstOMXVideoFilter * self, GstCaps * incaps,
   /* Set input height/width and color format */
   gst_omx_port_get_port_definition (self->in_port, &port_def);
 
+  if (self->interlaced) {
+    shift = 1;
+    GST_ERROR_OBJECT (self, "Interlaced mode in videofilter");
+  }
+
   port_def.format.video.nFrameWidth = GST_VIDEO_INFO_WIDTH (ininfo);
-  port_def.format.video.nFrameHeight = GST_VIDEO_INFO_HEIGHT (ininfo);
+  port_def.format.video.nFrameHeight = GST_VIDEO_INFO_HEIGHT (ininfo) >> shift;
   port_def.format.video.eCompressionFormat = OMX_VIDEO_CodingUnused;
   /* Transform gstreamer video format to OMX color format */
   port_def.format.video.eColorFormat =
@@ -1216,6 +1223,15 @@ gst_omx_video_filter_set_format (GstOMXVideoFilter * self, GstCaps * incaps,
   port_def.nBufferSize =
       gst_omx_video_filter_get_buffer_size (ininfo->finfo->format,
       port_def.format.video.nStride, port_def.format.video.nFrameHeight);
+
+  GST_LOG_OBJECT (self,
+        "Port index: %d, nFrameWidth: %d, nFrameHeight: %d, CompressionFormat: %d, ColorFormat: %d, BufferAlignment: %d, BufferContiguous: %d, BufferCountActual: %d, VideoStride: %d, Buffersize: %d",
+        self->in_port->index, port_def.format.video.nFrameWidth,
+        port_def.format.video.nFrameHeight,
+        port_def.format.video.eCompressionFormat,
+        port_def.format.video.eColorFormat, port_def.nBufferAlignment,
+        port_def.bBuffersContiguous, port_def.nBufferCountActual,
+        port_def.format.video.nStride, port_def.nBufferSize);
 
   GST_DEBUG_OBJECT (self, "Setting inport port definition");
   if (gst_omx_port_update_port_definition (self->in_port,
@@ -1526,6 +1542,7 @@ gst_omx_video_filter_set_caps (GstOMXVideoFilter * self, GstCaps * incaps)
   GstPad *otherpad;
   GList *outcaps_list = NULL, *outinfo_list = NULL;
   GList *srcpad, *srccaps;
+  GstStructure *s;
 
   gboolean ret = FALSE;
   gchar *caps_str = NULL;
@@ -1571,6 +1588,12 @@ gst_omx_video_filter_set_caps (GstOMXVideoFilter * self, GstCaps * incaps)
     goto parse_fail;
 
   GST_OMX_VIDEO_FILTER_STREAM_LOCK (self);
+
+  s = gst_caps_get_structure (incaps, 0);
+  if (g_strcmp0 (gst_structure_get_string (s, "interlace-mode"), "interleaved") == 0) {
+    GST_DEBUG_OBJECT (self, "Interlace-mode: interleaved");
+    self->interlaced = TRUE;
+  }
 
   /* and subclass should be ready to configure format at any time around */
   ret =
@@ -2346,6 +2369,17 @@ gst_omx_video_filter_handle_frame (GstOMXVideoFilter * self,
     id->timestamp = buf->omx_buf->nTimeStamp;
     gst_video_codec_frame_set_user_data (frame, id,
         (GDestroyNotify) buffer_identification_free);
+
+    if (self->interlaced) {
+      buf->omx_buf->nFlags = OMX_TI_BUFFERFLAG_VIDEO_FRAME_TYPE_INTERLACE;
+      if (self->bottom) {
+	buf->omx_buf->nFlags = buf->omx_buf->nFlags | OMX_TI_BUFFERFLAG_VIDEO_FRAME_TYPE_INTERLACE_BOTTOM;
+	self->bottom=FALSE;
+      }
+      else {
+	self->bottom=TRUE;
+      }
+    }
 
     priv->started = TRUE;
     err = gst_omx_port_release_buffer (port, buf);

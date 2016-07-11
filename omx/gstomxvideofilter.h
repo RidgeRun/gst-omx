@@ -71,6 +71,9 @@ struct _GstOMXVideoFilter
   GstPad *sinkpad;
   GList *srcpads;
 
+  gboolean interlaced;
+  gboolean bottom;
+
   /* protects all data processing, i.e. is locked
    * in the chain function, finish_frame and when
    * processing serialized events */
