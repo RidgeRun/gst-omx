@@ -356,6 +356,8 @@ gst_omx_video_filter_init (GstOMXVideoFilter * self,
   self->output_buffers = GST_OMX_VIDEO_FILTER_OUTPUT_BUFFERS_DEFAULT;
   self->interlaced = FALSE;
   self->bottom = FALSE;
+  self->top_bottom = TRUE;
+  self->drop_count = 0;
 
   gst_omx_video_filter_reset (self);
 
@@ -418,8 +420,14 @@ gst_omx_video_filter_finish_frame (GstOMXVideoFilter * self, GstPad * srcpad,
    * downstream.
    * The original buffer will be free-ed only when downstream AND the
    * current implementation are done with the frame. */
-  if (ret == GST_FLOW_OK)
-    ret = gst_pad_push (srcpad, gst_buffer_ref (frame->output_buffer));
+  if (ret == GST_FLOW_OK) {
+    if (self->interlaced && self->drop_count < 8) {
+      self->drop_count++;
+      GST_DEBUG_OBJECT (self, "Dropping in pad: %s %s",
+          GST_DEBUG_PAD_NAME (srcpad));
+    } else
+      ret = gst_pad_push (srcpad, gst_buffer_ref (frame->output_buffer));
+  }
 
 done:
   /* handed out */
@@ -655,6 +663,7 @@ gst_omx_video_filter_output_loop (GstPad * pad)
    * lock and the videocodec stream lock, if ::reset()
    * is called at the wrong time
    */
+
   if (gst_omx_port_is_flushing (port)) {
     GST_DEBUG_OBJECT (self, "Flushing");
     gst_omx_port_release_buffer (port, buf);
@@ -1201,7 +1210,7 @@ gst_omx_video_filter_set_format (GstOMXVideoFilter * self, GstCaps * incaps,
 
   if (self->interlaced) {
     shift = 1;
-    GST_ERROR_OBJECT (self, "Interlaced mode in videofilter");
+    GST_INFO_OBJECT (self, "Interlaced mode in videofilter");
   }
 
   port_def.format.video.nFrameWidth = GST_VIDEO_INFO_WIDTH (ininfo);
@@ -1225,13 +1234,13 @@ gst_omx_video_filter_set_format (GstOMXVideoFilter * self, GstCaps * incaps,
       port_def.format.video.nStride, port_def.format.video.nFrameHeight);
 
   GST_LOG_OBJECT (self,
-        "Port index: %d, nFrameWidth: %d, nFrameHeight: %d, CompressionFormat: %d, ColorFormat: %d, BufferAlignment: %d, BufferContiguous: %d, BufferCountActual: %d, VideoStride: %d, Buffersize: %d",
-        self->in_port->index, port_def.format.video.nFrameWidth,
-        port_def.format.video.nFrameHeight,
-        port_def.format.video.eCompressionFormat,
-        port_def.format.video.eColorFormat, port_def.nBufferAlignment,
-        port_def.bBuffersContiguous, port_def.nBufferCountActual,
-        port_def.format.video.nStride, port_def.nBufferSize);
+      "Port index: %d, nFrameWidth: %d, nFrameHeight: %d, CompressionFormat: %d, ColorFormat: %d, BufferAlignment: %d, BufferContiguous: %d, BufferCountActual: %d, VideoStride: %d, Buffersize: %d",
+      self->in_port->index, port_def.format.video.nFrameWidth,
+      port_def.format.video.nFrameHeight,
+      port_def.format.video.eCompressionFormat,
+      port_def.format.video.eColorFormat, port_def.nBufferAlignment,
+      port_def.bBuffersContiguous, port_def.nBufferCountActual,
+      port_def.format.video.nStride, port_def.nBufferSize);
 
   GST_DEBUG_OBJECT (self, "Setting inport port definition");
   if (gst_omx_port_update_port_definition (self->in_port,
@@ -1590,7 +1599,8 @@ gst_omx_video_filter_set_caps (GstOMXVideoFilter * self, GstCaps * incaps)
   GST_OMX_VIDEO_FILTER_STREAM_LOCK (self);
 
   s = gst_caps_get_structure (incaps, 0);
-  if (g_strcmp0 (gst_structure_get_string (s, "interlace-mode"), "interleaved") == 0) {
+  if (g_strcmp0 (gst_structure_get_string (s, "interlace-mode"),
+          "interleaved") == 0) {
     GST_DEBUG_OBJECT (self, "Interlace-mode: interleaved");
     self->interlaced = TRUE;
   }
@@ -2373,11 +2383,12 @@ gst_omx_video_filter_handle_frame (GstOMXVideoFilter * self,
     if (self->interlaced) {
       buf->omx_buf->nFlags = OMX_TI_BUFFERFLAG_VIDEO_FRAME_TYPE_INTERLACE;
       if (self->bottom) {
-	buf->omx_buf->nFlags = buf->omx_buf->nFlags | OMX_TI_BUFFERFLAG_VIDEO_FRAME_TYPE_INTERLACE_BOTTOM;
-	self->bottom=FALSE;
-      }
-      else {
-	self->bottom=TRUE;
+        buf->omx_buf->nFlags =
+            buf->omx_buf->nFlags |
+            OMX_TI_BUFFERFLAG_VIDEO_FRAME_TYPE_INTERLACE_BOTTOM;
+        self->bottom = FALSE;
+      } else {
+        self->bottom = TRUE;
       }
     }
 
@@ -2485,6 +2496,20 @@ gst_omx_video_filter_chain (GstPad * pad, GstObject * parent, GstBuffer * buf)
       ", DTS %" GST_TIME_FORMAT ", duration %" GST_TIME_FORMAT,
       gst_buffer_get_size (buf), GST_TIME_ARGS (pts),
       GST_TIME_ARGS (GST_BUFFER_DTS (buf)), GST_TIME_ARGS (duration));
+
+  if (GST_BUFFER_FLAG_IS_SET (buf, GST_VIDEO_BUFFER_FLAG_INTERLACED)) {
+    if (GST_BUFFER_FLAG_IS_SET (buf, GST_VIDEO_BUFFER_FLAG_TFF)) {
+      if (!self->top_bottom) {
+        self->top_bottom = TRUE;
+        self->bottom = !self->bottom;
+      }
+    } else {
+      if (self->top_bottom) {
+        self->top_bottom = FALSE;
+        self->bottom = !self->bottom;
+      }
+    }
+  }
 
   start = pts;
   if (GST_CLOCK_TIME_IS_VALID (duration))

@@ -73,6 +73,8 @@ struct _GstOMXVideoFilter
 
   gboolean interlaced;
   gboolean bottom;
+  gboolean top_bottom;
+  guint drop_count;
 
   /* protects all data processing, i.e. is locked
    * in the chain function, finish_frame and when
