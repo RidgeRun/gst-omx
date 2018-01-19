@@ -75,8 +75,8 @@ struct _GstOMXCamera
   /* properties */
   gboolean always_copy;
   gint interface;
-  gint capt_mode;
-  gint vip_mode;
+  gint capture_mode;
+  gint vif_mode;
   gint scan_type;
   gint num_buffers;
   guint skip_frames;

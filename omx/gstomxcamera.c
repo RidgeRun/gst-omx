@@ -17,19 +17,6 @@
  *
  */
 
-/**
- * SECTION:element-omxcamera
- *
- * omxcamera can be used to capture video from v4l2 devices throught the 
- * OMX capture component
- *
- * <refsect2>
- * <title>Example launch lines</title>
- * |[
- * gst-launch-1.0 omxcamera ! fakesink
- * ]| This pipeline shows the video captured from /dev/video0
- * </refsect2>
- */
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -48,24 +35,22 @@
 GST_DEBUG_CATEGORY_STATIC (gst_omx_camera_debug);
 #define GST_CAT_DEFAULT gst_omx_camera_debug
 
-
 enum
 {
   PROP_0,
   PROP_ALWAYS_COPY,
   PROP_NUM_OUT_BUFFERS,
   PROP_INTERFACE,
-  PROP_CAPT_MODE,
-  PROP_VIP_MODE,
+  PROP_CAPTURE_MODE,
+  PROP_VIF_MODE,
   PROP_SCAN_TYPE,
   PROP_SKIP_FRAMES
 };
 
 #define gst_omx_camera_parent_class parent_class
 G_DEFINE_TYPE (GstOMXCamera, gst_omx_camera, GST_TYPE_PUSH_SRC);
-/*
- * Caps:
- */
+
+/* Caps */
 static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
@@ -80,8 +65,8 @@ static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE ("src",
 #define PROP_ALWAYS_COPY_DEFAULT          FALSE
 #define PROP_NUM_OUT_BUFFERS_DEFAULT      5
 #define PROP_INTERFACE_DEFAULT            OMX_VIDEO_CaptureHWPortVIP1_PORTA
-#define PROP_CAPT_MODE_DEFAULT            OMX_VIDEO_CaptureModeSC_NON_MUX
-#define PROP_VIP_MODE_DEFAULT             OMX_VIDEO_CaptureVifMode_16BIT
+#define PROP_CAPTURE_MODE_DEFAULT            OMX_VIDEO_CaptureModeSC_NON_MUX
+#define PROP_VIF_MODE_DEFAULT             OMX_VIDEO_CaptureVifMode_16BIT
 #define PROP_SCAN_TYPE_DEFAULT            OMX_VIDEO_CaptureScanTypeProgressive
 #define PROP_SKIP_FRAMES_DEFAULT          0
 
@@ -105,44 +90,44 @@ gst_omx_camera_interface_get_type (void)
   return interface_type;
 }
 
-#define GST_OMX_CAMERA_CAPT_MODE_TYPE (gst_omx_camera_capt_mode_get_type())
+#define GST_OMX_CAMERA_CAPTURE_MODE_TYPE (gst_omx_camera_capture_mode_get_type())
 static GType
-gst_omx_camera_capt_mode_get_type (void)
+gst_omx_camera_capture_mode_get_type (void)
 {
-  static GType capt_mode_type = 0;
+  static GType capture_mode_type = 0;
 
-  static const GEnumValue capt_mode_types[] = {
+  static const GEnumValue capture_mode_types[] = {
     {OMX_VIDEO_CaptureModeSC_NON_MUX, "Non multiplexed", "nmux"},
     {OMX_VIDEO_CaptureModeMC_LINE_MUX, "Line multiplexed ", "lmux"},
     {OMX_VIDEO_CaptureModeSC_DISCRETESYNC_ACTVID_VSYNC, "Discrete sync", "dsync"},
     {0, NULL, NULL}
   };
 
-  if (!capt_mode_type) {
-    capt_mode_type =
-        g_enum_register_static ("GstOMXCameraCaptMode", capt_mode_types);
+  if (!capture_mode_type) {
+    capture_mode_type =
+        g_enum_register_static ("GstOMXCameraCaptMode", capture_mode_types);
   }
-  return capt_mode_type;
+  return capture_mode_type;
 }
 
-#define GST_OMX_CAMERA_VIP_MODE_TYPE (gst_omx_camera_vip_mode_get_type())
+#define GST_OMX_CAMERA_VIP_MODE_TYPE (gst_omx_camera_vif_mode_get_type())
 static GType
-gst_omx_camera_vip_mode_get_type (void)
+gst_omx_camera_vif_mode_get_type (void)
 {
-  static GType vip_mode_type = 0;
+  static GType vif_mode_type = 0;
 
-  static const GEnumValue vip_mode_types[] = {
+  static const GEnumValue vif_mode_types[] = {
     {OMX_VIDEO_CaptureVifMode_08BIT, "8 bits", "8"},
     {OMX_VIDEO_CaptureVifMode_16BIT, "16 bits ", "16"},
     {OMX_VIDEO_CaptureVifMode_24BIT, "24 bits", "24"},
     {0, NULL, NULL}
   };
 
-  if (!vip_mode_type) {
-    vip_mode_type =
-        g_enum_register_static ("GstOMXCameraVipMode", vip_mode_types);
+  if (!vif_mode_type) {
+    vif_mode_type =
+        g_enum_register_static ("GstOMXCameraVipMode", vif_mode_types);
   }
-  return vip_mode_type;
+  return vif_mode_type;
 }
 
 #define GST_OMX_CAMERA_SCAN_TYPE (gst_omx_camera_scan_type_get_type())
@@ -208,16 +193,16 @@ gst_omx_camera_class_init (GstOMXCameraClass * klass)
           GST_OMX_CAMERA_INTERFACE_TYPE, PROP_INTERFACE_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-  g_object_class_install_property (gobject_class, PROP_CAPT_MODE,
-      g_param_spec_enum ("capt-mode", "Capture mode",
+  g_object_class_install_property (gobject_class, PROP_CAPTURE_MODE,
+      g_param_spec_enum ("capture-mode", "Capture mode",
           "The video input multiplexed mode",
-          GST_OMX_CAMERA_CAPT_MODE_TYPE, PROP_CAPT_MODE_DEFAULT,
+          GST_OMX_CAMERA_CAPTURE_MODE_TYPE, PROP_CAPTURE_MODE_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-  g_object_class_install_property (gobject_class, PROP_VIP_MODE,
-      g_param_spec_enum ("vip-mode", "VIP mode",
-          "VIP port split configuration",
-          GST_OMX_CAMERA_VIP_MODE_TYPE, PROP_VIP_MODE_DEFAULT,
+  g_object_class_install_property (gobject_class, PROP_VIF_MODE,
+      g_param_spec_enum ("vif-mode", "VIF mode",
+          "VIF port split configuration",
+          GST_OMX_CAMERA_VIP_MODE_TYPE, PROP_VIF_MODE_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property (gobject_class, PROP_SCAN_TYPE,
@@ -277,8 +262,8 @@ gst_omx_camera_init (GstOMXCamera * self)
 
   /* Initialize properties */
   self->interface = PROP_INTERFACE_DEFAULT;
-  self->capt_mode = PROP_CAPT_MODE_DEFAULT;
-  self->vip_mode = PROP_VIP_MODE_DEFAULT;
+  self->capture_mode = PROP_CAPTURE_MODE_DEFAULT;
+  self->vif_mode = PROP_VIF_MODE_DEFAULT;
   self->scan_type = PROP_SCAN_TYPE_DEFAULT;
   self->always_copy = PROP_ALWAYS_COPY_DEFAULT;
   self->num_buffers = PROP_NUM_OUT_BUFFERS_DEFAULT;
@@ -336,11 +321,11 @@ gst_omx_camera_set_property (GObject * object,
     case PROP_INTERFACE:
       self->interface = g_value_get_enum (value);
       break;
-    case PROP_CAPT_MODE:
-      self->capt_mode = g_value_get_enum (value);
+    case PROP_CAPTURE_MODE:
+      self->capture_mode = g_value_get_enum (value);
       break;
-    case PROP_VIP_MODE:
-      self->vip_mode = g_value_get_enum (value);
+    case PROP_VIF_MODE:
+      self->vif_mode = g_value_get_enum (value);
       break;
     case PROP_SCAN_TYPE:
       self->scan_type = g_value_get_enum (value);
@@ -373,11 +358,11 @@ gst_omx_camera_get_property (GObject * object,
     case PROP_INTERFACE:
       g_value_set_enum (value, self->interface);
       break;
-    case PROP_CAPT_MODE:
-      g_value_set_enum (value, self->capt_mode);
+    case PROP_CAPTURE_MODE:
+      g_value_set_enum (value, self->capture_mode);
       break;
-    case PROP_VIP_MODE:
-      g_value_set_enum (value, self->vip_mode);
+    case PROP_VIF_MODE:
+      g_value_set_enum (value, self->vif_mode);
       break;
     case PROP_SCAN_TYPE:
       g_value_set_enum (value, self->scan_type);
@@ -413,7 +398,7 @@ gst_omx_camera_get_property (GObject * object,
   }
 }
 
-/* Following caps negotiation related functions were taken from the 
+/* Following caps negotiation related functions were taken from the
  * omx_camera element code */
 
 /* this function is a bit of a last resort */
@@ -717,8 +702,8 @@ gst_omx_camera_set_format (GstOMXCamera * self, GstCaps * caps,
   GST_DEBUG_OBJECT (self, "Hardware port id: %d", hw_port.eHwPortId);
 
   GST_OMX_INIT_STRUCT (&hw_port_param);
-  hw_port_param.eCaptMode = self->capt_mode;
-  hw_port_param.eVifMode = self->vip_mode;
+  hw_port_param.eCaptMode = self->capture_mode;
+  hw_port_param.eVifMode = self->vif_mode;
   hw_port_param.eInColorFormat = OMX_COLOR_FormatYCbYCr;
   hw_port_param.eScanType = self->scan_type;
   hw_port_param.nMaxHeight = GST_VIDEO_INFO_HEIGHT (info);
