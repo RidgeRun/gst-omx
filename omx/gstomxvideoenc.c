@@ -2141,13 +2141,19 @@ gst_omx_video_enc_getcaps (GstVideoEncoder * encoder, GstCaps * filter)
 
   negotiation_map = gst_omx_video_enc_get_supported_colorformats (self);
   comp_supported_caps = gst_caps_new_empty ();
-  for (l = negotiation_map; l; l = l->next) {
-    VideoNegotiationMap *map = l->data;
 
-    gst_caps_append_structure (comp_supported_caps,
-        gst_structure_new ("video/x-raw",
-            "format", G_TYPE_STRING,
-            gst_video_format_to_string (map->format), NULL));
+  if (negotiation_map)
+  {
+    for (l = negotiation_map; l; l = l->next) {
+      VideoNegotiationMap *map = l->data;
+
+      gst_caps_append_structure (comp_supported_caps,
+          gst_structure_new ("video/x-raw",
+              "format", G_TYPE_STRING,
+              gst_video_format_to_string (map->format), NULL));
+    }
+    g_list_free_full (negotiation_map,
+      (GDestroyNotify) video_negotiation_map_free);
   }
 
   if (!gst_caps_is_empty (comp_supported_caps)) {
