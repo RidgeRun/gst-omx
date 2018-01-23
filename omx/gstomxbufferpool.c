@@ -245,10 +245,19 @@ gst_omx_buffer_pool_stop (GstBufferPool * bpool)
 {
   GstOMXBufferPool *pool = GST_OMX_BUFFER_POOL (bpool);
   GstOMXBufferPoolPrivate *priv = pool->priv;
+  gint i = 0;
 
-  GST_DEBUG_OBJECT (pool, "realeasing buffer from pool");
+  GST_DEBUG_OBJECT (pool, "releasing buffer from pool");
   if (!priv->component)
     while (gst_atomic_queue_pop (priv->queue));
+
+  /* When not using the default GstBufferPool::GstAtomicQueue then
+  * GstBufferPool::free_buffer is not called while stopping the pool
+  * (because the queue is empty) */
+  for (i = 0; i < priv->buffers->len; i++)
+    GST_BUFFER_POOL_CLASS (gst_omx_buffer_pool_parent_class)->release_buffer
+        (bpool, g_ptr_array_index (priv->buffers, i));
+
   /* Remove any buffers that are there */
   g_ptr_array_set_size (priv->buffers, 0);
 
